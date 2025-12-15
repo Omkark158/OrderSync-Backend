@@ -1,3 +1,6 @@
+// ============================================
+// 1. USER MODEL (models/User.js)
+// ============================================
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema(
@@ -12,6 +15,12 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Please provide a phone number'],
       unique: true,
     },
+    email: {
+      type: String,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+    },
     role: {
       type: String,
       enum: ['user', 'restaurant', 'delivery', 'admin'],
@@ -21,7 +30,7 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    // Phone Verification Fields
+    // Phone Verification
     isPhoneVerified: {
       type: Boolean,
       default: false,
@@ -34,7 +43,7 @@ const userSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
-    // Login OTP Fields
+    // Login OTP
     loginOTP: {
       type: String,
       select: false,
@@ -46,6 +55,26 @@ const userSchema = new mongoose.Schema(
     lastLogin: {
       type: Date,
     },
+    // Addresses
+    addresses: [
+      {
+        label: {
+          type: String,
+          enum: ['home', 'work', 'other'],
+          default: 'home',
+        },
+        street: String,
+        city: String,
+        state: String,
+        pincode: String,
+        isDefault: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
+    // Customer GSTIN (if business)
+    gstin: String,
   },
   {
     timestamps: true,

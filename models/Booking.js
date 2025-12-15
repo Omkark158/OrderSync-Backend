@@ -1,5 +1,5 @@
-const mongoose = require('mongoose');
-
+// 5. BOOKING MODEL (models/Booking.js)
+// ============================================
 const bookingSchema = new mongoose.Schema(
   {
     order: {
@@ -20,9 +20,7 @@ const bookingSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    customerEmail: {
-      type: String,
-    },
+    customerEmail: String,
     bookingDateTime: {
       type: Date,
       required: [true, 'Booking date and time is required'],
@@ -37,16 +35,14 @@ const bookingSchema = new mongoose.Schema(
       enum: ['scheduled', 'reminded', 'completed', 'cancelled', 'no-show'],
       default: 'scheduled',
     },
-    // Reminder settings
     reminderSettings: {
       enabled: {
         type: Boolean,
         default: true,
       },
-      // How many minutes before the booking to send reminder
       reminderBefore: {
         type: Number,
-        default: 60, // 1 hour before
+        default: 60, // 1 hour
       },
       reminderType: {
         type: [String],
@@ -54,26 +50,17 @@ const bookingSchema = new mongoose.Schema(
         default: ['sms'],
       },
     },
-    // Reminder status
     reminderSent: {
       type: Boolean,
       default: false,
     },
-    reminderSentAt: {
-      type: Date,
-    },
+    reminderSentAt: Date,
     reminderAttempts: {
       type: Number,
       default: 0,
     },
-    lastReminderError: {
-      type: String,
-    },
-    // Scheduled reminder time (calculated)
-    scheduledReminderTime: {
-      type: Date,
-    },
-    // Additional notes
+    lastReminderError: String,
+    scheduledReminderTime: Date,
     specialRequests: {
       type: String,
       maxlength: [500, 'Special requests cannot exceed 500 characters'],
@@ -82,21 +69,10 @@ const bookingSchema = new mongoose.Schema(
       type: Number,
       min: 1,
     },
-    tableNumber: {
-      type: String,
-    },
-    // Cancellation
-    cancelledAt: {
-      type: Date,
-    },
-    cancellationReason: {
-      type: String,
-    },
-    // Completion
-    completedAt: {
-      type: Date,
-    },
-    // Feedback
+    tableNumber: String,
+    cancelledAt: Date,
+    cancellationReason: String,
+    completedAt: Date,
     feedback: {
       rating: {
         type: Number,
@@ -107,9 +83,7 @@ const bookingSchema = new mongoose.Schema(
         type: String,
         maxlength: [500, 'Comment cannot exceed 500 characters'],
       },
-      submittedAt: {
-        type: Date,
-      },
+      submittedAt: Date,
     },
   },
   {
@@ -117,7 +91,6 @@ const bookingSchema = new mongoose.Schema(
   }
 );
 
-// Calculate scheduled reminder time before saving
 bookingSchema.pre('save', function (next) {
   if (this.reminderSettings.enabled && this.bookingDateTime) {
     const reminderTime = new Date(this.bookingDateTime);
@@ -129,14 +102,12 @@ bookingSchema.pre('save', function (next) {
   next();
 });
 
-// Index for faster queries
 bookingSchema.index({ order: 1 });
 bookingSchema.index({ user: 1 });
 bookingSchema.index({ bookingDateTime: 1 });
 bookingSchema.index({ status: 1 });
 bookingSchema.index({ scheduledReminderTime: 1, reminderSent: 1 });
 
-// Method to check if reminder should be sent
 bookingSchema.methods.shouldSendReminder = function () {
   const now = new Date();
   return (

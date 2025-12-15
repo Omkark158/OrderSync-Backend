@@ -1,46 +1,60 @@
-const twilio = require('twilio');
+const axios = require('axios');
 
-// Twilio Configuration
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+// Fast2SMS Configuration
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY;
+const FAST2SMS_URL = 'https://www.fast2sms.com/dev/bulkV2';
 
-let twilioClient;
-if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
-  twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-  console.log('✅ Twilio client initialized');
-}
-
-// Send SMS using Twilio
+// Send SMS using Fast2SMS
 exports.sendSMS = async (phone, message) => {
   try {
-    if (!twilioClient) {
-      console.warn('⚠️  Twilio not configured - logging OTP instead');
+    if (!FAST2SMS_API_KEY) {
+      console.warn('⚠️  Fast2SMS API key not configured - logging OTP instead');
       console.log(`📱 SMS to ${phone}: ${message}`);
-      return { success: true, message: 'SMS logged (Twilio not configured)' };
+      // Extract OTP from message
+      const otpMatch = message.match(/\d{6}/);
+      if (otpMatch) {
+        console.log(`🔐 OTP: ${otpMatch[0]}`);
+      }
+      return { success: true, message: 'SMS logged (API key missing)' };
     }
 
-    // Format phone number with country code
-    const formattedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
+    // Format phone number (remove +91 if present)
+    const formattedPhone = phone.replace(/^\+91/, '');
 
-    const result = await twilioClient.messages.create({
-      body: message,
-      from: TWILIO_PHONE_NUMBER,
-      to: formattedPhone,
-    });
+    const response = await axios.post(
+      FAST2SMS_URL,
+      {
+        route: 'v3',
+        sender_id: 'TXTIND',
+        message: message,
+        language: 'english',
+        flash: 0,
+        numbers: formattedPhone,
+      },
+      {
+        headers: {
+          authorization: FAST2SMS_API_KEY,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
-    console.log(`✅ SMS sent successfully to ${formattedPhone} - SID: ${result.sid}`);
-    return { 
-      success: true, 
-      message: 'SMS sent successfully', 
-      phone: formattedPhone,
-      messageSid: result.sid 
-    };
+    if (response.data.return === true) {
+      console.log(`✅ SMS sent successfully to ${formattedPhone}`);
+      return { 
+        success: true, 
+        message: 'SMS sent successfully', 
+        phone: formattedPhone,
+        messageId: response.data.message_id 
+      };
+    } else {
+      throw new Error(response.data.message || 'SMS sending failed');
+    }
   } catch (error) {
-    console.error('❌ Twilio SMS error:', error.message);
-    // Fallback to console logging
+    console.error('❌ Fast2SMS error:', error.response?.data || error.message);
+    // Fallback to console logging instead of throwing error
     console.log(`📱 OTP for ${phone}: ${message.match(/\d{6}/)?.[0]}`);
-    return { success: true, message: 'SMS logged (Twilio error)' };
+    return { success: true, message: 'SMS logged (Fast2SMS error)' };
   }
 };
 

@@ -1,5 +1,6 @@
-const mongoose = require('mongoose');
-
+// ============================================
+// 2. MENU MODEL (models/Menu.js)
+// ============================================
 const menuSchema = new mongoose.Schema(
   {
     name: {
@@ -66,6 +67,11 @@ const menuSchema = new mongoose.Schema(
         default: 0,
       },
     },
+    // GST Info
+    gstRate: {
+      type: Number,
+      default: 5, // 5% GST on food items
+    },
     isDeleted: {
       type: Boolean,
       default: false,
@@ -76,20 +82,11 @@ const menuSchema = new mongoose.Schema(
   }
 );
 
-// Indexes
 menuSchema.index({ category: 1, isAvailable: 1 });
 menuSchema.index({ name: 'text', description: 'text' });
 
-/**
- * FIXED PRE-FIND HOOK
- * This hides soft-deleted items unless includeDeleted = true is explicitly passed:
- * Menu.find({}, null, { includeDeleted: true })
- */
 menuSchema.pre(/^find/, function () {
-  // Use _mongooseOptions to check custom query options
   const opts = this._mongooseOptions;
-
-  // If includeDeleted option is NOT provided, filter out soft-deleted items
   if (!opts || !opts.includeDeleted) {
     this.find({ isDeleted: { $ne: true } });
   }

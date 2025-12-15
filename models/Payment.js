@@ -1,11 +1,15 @@
-const mongoose = require('mongoose');
-
+// 4. PAYMENT MODEL (models/Payment.js) - UPDATED
+// ============================================
 const paymentSchema = new mongoose.Schema(
   {
     order: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Order',
       required: true,
+    },
+    invoice: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Invoice', // NEW - Link to invoice
     },
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -69,6 +73,7 @@ const paymentSchema = new mongoose.Schema(
 );
 
 paymentSchema.index({ order: 1 });
+paymentSchema.index({ invoice: 1 });
 paymentSchema.index({ user: 1 });
 paymentSchema.index({ razorpay_order_id: 1 });
 
