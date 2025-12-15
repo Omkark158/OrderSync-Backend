@@ -1,5 +1,7 @@
 const Order = require('../models/Order');
 const Menu = require('../models/Menu');
+const Invoice = require('../models/Invoice');
+const smsService = require('../utils/smsService');
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -250,6 +252,90 @@ exports.cancelOrder = async (req, res, next) => {
       success: true,
       message: 'Order cancelled successfully',
       data: order,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.sendOrderInvoiceSMS = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id).populate('user');
+    
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    // Check authorization
+    if (order.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized',
+      });
+    }
+
+    // Get invoice
+    const invoice = await Invoice.findOne({ order: order._id });
+    
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found',
+      });
+    }
+
+    // Generate invoice URL
+    const invoiceUrl = `${req.protocol}://${req.get('host')}/api/invoices/${invoice._id}/download`;
+    
+    // Send SMS
+    const message = `Order #${order.orderNumber} Invoice: ${invoiceUrl} - Sachin Foods`;
+    await smsService.sendSMS(order.customerPhone, message);
+
+    res.status(200).json({
+      success: true,
+      message: 'Invoice sent via SMS',
+      invoiceUrl,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ADD THIS FUNCTION - Get invoice for order
+exports.getOrderInvoice = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    // Check authorization
+    if (order.user.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized',
+      });
+    }
+
+    const invoice = await Invoice.findOne({ order: order._id });
+    
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found for this order',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: invoice,
     });
   } catch (error) {
     next(error);

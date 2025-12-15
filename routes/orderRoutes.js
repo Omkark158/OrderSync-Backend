@@ -7,6 +7,8 @@ const {
   getOrdersByPhone,
   updateOrderStatus,
   cancelOrder,
+  sendOrderInvoiceSMS,    
+  getOrderInvoice, 
 } = require('../controllers/orderController');
 const { protect, authorize } = require('../middleware/auth');
 const { createOrderValidator } = require('../validators/orderValidator');
@@ -26,5 +28,9 @@ router.put('/:id/cancel', cancelOrder);
 
 // Update order status (admin only)
 router.put('/:id/status', authorize('admin'), updateOrderStatus);
+
+//order invoice routes 
+router.get('/:id/invoice', getOrderInvoice);
+router.post('/:id/send-invoice-sms', sendOrderInvoiceSMS);
 
 module.exports = router;
