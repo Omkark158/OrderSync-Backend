@@ -2,19 +2,31 @@ const express = require('express');
 const router = express.Router();
 const {
   signup,
+  verifySignupOTP,
+  resendSignupOTP,
   login,
+  verifyLoginOTP,
+  resendLoginOTP,
   getMe,
   logout,
-  forgotPassword,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
-const { signupValidator, loginValidator } = require('../validators/authValidator');
-const validateRequest = require('../middleware/validateRequest');
+const {
+  signupValidator,
+  loginValidator,
+  verifyOTPValidator,
+} = require('../validators/authValidator');
+const { validate } = require('../middleware/validate');
 
-// Public routes
-router.post('/signup', signupValidator, validateRequest, signup);
-router.post('/login', loginValidator, validateRequest, login);
-router.post('/forgot-password', forgotPassword);
+// Signup routes
+router.post('/signup', signupValidator, validate, signup);
+router.post('/verify-signup', verifyOTPValidator, validate, verifySignupOTP); // ✅ RENAMED
+router.post('/resend-signup', resendSignupOTP); // ✅ RENAMED
+
+// Login routes
+router.post('/login', loginValidator, validate, login);
+router.post('/verify-login', verifyOTPValidator, validate, verifyLoginOTP); // ✅ SHORT
+router.post('/resend-login', resendLoginOTP); // ✅ SHORT
 
 // Protected routes
 router.get('/me', protect, getMe);

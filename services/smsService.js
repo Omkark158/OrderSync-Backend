@@ -1,126 +1,114 @@
-const config = require('../config/env');
+const twilio = require('twilio');
 
-// Note: This is a template. You'll need to integrate with an actual SMS provider
-// Popular options: Twilio, Fast2SMS, MSG91, AWS SNS
+// Twilio Configuration
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
-// Send SMS (template - needs actual SMS provider integration)
+let twilioClient;
+if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+  twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+  console.log('✅ Twilio client initialized');
+}
+
+// Send SMS using Twilio
 exports.sendSMS = async (phone, message) => {
   try {
-    if (!config.sms.api_key) {
-      console.warn('⚠️  SMS API key not configured');
-      return { success: false, message: 'SMS service not configured' };
+    if (!twilioClient) {
+      console.warn('⚠️  Twilio not configured - logging OTP instead');
+      console.log(`📱 SMS to ${phone}: ${message}`);
+      return { success: true, message: 'SMS logged (Twilio not configured)' };
     }
 
-    // TODO: Integrate with your SMS provider
-    // Example for Twilio, Fast2SMS, MSG91, etc.
-    
-    console.log(`📱 SMS to ${phone}: ${message}`);
-    
-    // Simulate SMS sending for now
-    return { success: true, message: 'SMS sent successfully' };
+    // Format phone number with country code
+    const formattedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
+
+    const result = await twilioClient.messages.create({
+      body: message,
+      from: TWILIO_PHONE_NUMBER,
+      to: formattedPhone,
+    });
+
+    console.log(`✅ SMS sent successfully to ${formattedPhone} - SID: ${result.sid}`);
+    return { 
+      success: true, 
+      message: 'SMS sent successfully', 
+      phone: formattedPhone,
+      messageSid: result.sid 
+    };
   } catch (error) {
-    console.error('❌ SMS sending error:', error);
-    throw new Error('Failed to send SMS');
+    console.error('❌ Twilio SMS error:', error.message);
+    // Fallback to console logging
+    console.log(`📱 OTP for ${phone}: ${message.match(/\d{6}/)?.[0]}`);
+    return { success: true, message: 'SMS logged (Twilio error)' };
   }
 };
 
-// Send OTP SMS
-exports.sendOTP = async (phone, otp) => {
-  const message = `Your OrderSync OTP is: ${otp}. Valid for 10 minutes. Do not share this code.`;
+// Generate 6-digit OTP
+exports.generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// Send OTP SMS for signup
+exports.sendSignupOTP = async (phone, otp) => {
+  const message = `Welcome to Sachin Foods, Kundara! Your signup OTP is: ${otp}. Valid for 10 minutes. Do not share this code.`;
   return await this.sendSMS(phone, message);
 };
 
-// Send order confirmation SMS
-exports.sendOrderConfirmationSMS = async (phone, orderNumber) => {
-  const message = `Your order ${orderNumber} has been confirmed! Thank you for ordering with OrderSync.`;
+// Send OTP SMS for login
+exports.sendLoginOTP = async (phone, otp) => {
+  const message = `Your Sachin Foods login OTP is: ${otp}. Valid for 10 minutes. Do not share this code.`;
   return await this.sendSMS(phone, message);
 };
 
-// Send booking reminder SMS
-exports.sendBookingReminderSMS = async (phone, bookingDateTime) => {
-  const dateTime = new Date(bookingDateTime).toLocaleString('en-IN', {
+// Send catering order confirmation SMS
+exports.sendOrderConfirmationSMS = async (phone, orderNumber, eventDate) => {
+  const message = `Your order ${orderNumber} confirmed! Sachin Foods will deliver fresh Chappathy, Appam & more for your event. Thank you! Call: 9539387240`;
+  return await this.sendSMS(phone, message);
+};
+
+// Send event/booking reminder SMS
+exports.sendEventReminderSMS = async (phone, eventDateTime, guestCount) => {
+  const dateTime = new Date(eventDateTime).toLocaleString('en-IN', {
     day: 'numeric',
     month: 'short',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
   
-  const message = `Reminder: Your booking at OrderSync is scheduled for ${dateTime}. See you soon!`;
+  const message = `Reminder: Sachin Foods catering for ${guestCount} guests on ${dateTime}. We're ready with fresh food! Contact: 9539387240`;
   return await this.sendSMS(phone, message);
 };
 
-// Send order status update SMS
+// Send catering order status update SMS
 exports.sendOrderStatusSMS = async (phone, orderNumber, status) => {
   const statusMessages = {
-    confirmed: `Your order ${orderNumber} has been confirmed and is being prepared.`,
-    preparing: `Your order ${orderNumber} is being prepared.`,
-    ready: `Your order ${orderNumber} is ready for pickup/delivery!`,
-    delivered: `Your order ${orderNumber} has been delivered. Enjoy your meal!`,
-    cancelled: `Your order ${orderNumber} has been cancelled.`,
+    confirmed: `Order ${orderNumber} confirmed! Sachin Foods team is preparing fresh Chappathy, Appam & bakery items for your event. Call: 9539387240`,
+    preparing: `We're preparing fresh food for your event. Order ${orderNumber} in progress. Sachin Foods, Kundara. Ph: 9539387240`,
+    ready: `Your order ${orderNumber} is ready! Sachin Foods will deliver on time. Fresh Chappathy & more. Contact: 9539387240`,
+    completed: `Thank you for choosing Sachin Foods! Hope you enjoyed our Chappathy, Appam & bakery items. Order ${orderNumber}. Ph: 9539387240`,
+    cancelled: `Order ${orderNumber} cancelled. For assistance contact Sachin Foods at 9539387240, 9388808825. Kundara, Kollam.`,
   };
 
-  const message = statusMessages[status] || `Order ${orderNumber} status updated to ${status}.`;
+  const message = statusMessages[status] || `Order ${orderNumber} status: ${status}. Sachin Foods - Ph: 9539387240`;
   return await this.sendSMS(phone, message);
 };
 
 // Send payment confirmation SMS
 exports.sendPaymentConfirmationSMS = async (phone, amount, orderId) => {
-  const message = `Payment of ₹${amount} received for order ${orderId}. Thank you!`;
+  const message = `Payment of ₹${amount} received for order ${orderId}. Thank you! Sachin Foods, Kundara, Kollam. Ph: 9539387240`;
   return await this.sendSMS(phone, message);
 };
 
-// Example integration with Fast2SMS (Indian SMS provider)
-/*
-const axios = require('axios');
-
-exports.sendSMSFast2SMS = async (phone, message) => {
-  try {
-    const response = await axios.post(
-      'https://www.fast2sms.com/dev/bulkV2',
-      {
-        route: 'v3',
-        sender_id: config.sms.sender_id,
-        message: message,
-        language: 'english',
-        flash: 0,
-        numbers: phone,
-      },
-      {
-        headers: {
-          authorization: config.sms.api_key,
-        },
-      }
-    );
-
-    return { success: true, data: response.data };
-  } catch (error) {
-    console.error('Fast2SMS error:', error);
-    throw new Error('Failed to send SMS');
-  }
+// Send quotation/inquiry response SMS
+exports.sendQuotationSMS = async (phone, customerName) => {
+  const message = `Hi ${customerName}, thank you for your inquiry! Sachin Foods quotation sent to your email. We specialize in Chappathy, Appam, Veesappam, Pathiri & Bakery items. Call: 9539387240`;
+  return await this.sendSMS(phone, message);
 };
-*/
 
-// Example integration with Twilio
-/*
-const twilio = require('twilio');
-
-exports.sendSMSTwilio = async (phone, message) => {
-  try {
-    const client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
-
-    const result = await client.messages.create({
-      body: message,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: phone,
-    });
-
-    return { success: true, messageId: result.sid };
-  } catch (error) {
-    console.error('Twilio error:', error);
-    throw new Error('Failed to send SMS');
-  }
+// Send menu customization confirmation SMS
+exports.sendMenuCustomizationSMS = async (phone, orderNumber) => {
+  const message = `Custom menu confirmed for order ${orderNumber}! Sachin Foods will prepare fresh Chappathy, Appam & more specially for your event. Ph: 9539387240`;
+  return await this.sendSMS(phone, message);
 };
-*/

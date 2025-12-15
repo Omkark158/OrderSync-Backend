@@ -23,15 +23,15 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    // ✅ FIXED: Verify token with HS256 algorithm
-    const decoded = jwt.verify(token, config.jwt.secret, {
-      algorithms: ['HS256']  // ← Add this!
+    // ✅ FIXED: Use config.jwt_secret (not config.jwt.secret)
+    const decoded = jwt.verify(token, config.jwt_secret, {
+      algorithms: ['HS256']
     });
 
     console.log('Decoded token:', decoded); // Debug log
 
-    // Get user from token
-    req.user = await User.findById(decoded.id).select('-password');
+    // ✅ FIXED: No .select('-password') since password field doesn't exist
+    req.user = await User.findById(decoded.id);
 
     if (!req.user) {
       return res.status(401).json({
@@ -84,10 +84,12 @@ exports.optionalAuth = async (req, res, next) => {
 
   if (token) {
     try {
-      const decoded = jwt.verify(token, config.jwt.secret, {
+      // ✅ FIXED: Use config.jwt_secret (not config.jwt.secret)
+      const decoded = jwt.verify(token, config.jwt_secret, {
         algorithms: ['HS256']
       });
-      req.user = await User.findById(decoded.id).select('-password');
+      // ✅ FIXED: No .select('-password')
+      req.user = await User.findById(decoded.id);
     } catch (error) {
       // Token invalid but continue anyway
       req.user = null;

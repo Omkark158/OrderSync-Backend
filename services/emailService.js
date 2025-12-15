@@ -1,138 +1,82 @@
-const nodemailer = require('nodemailer');
-const config = require('../config/env');
+// const nodemailer = require('nodemailer');
+// const config = require('../config/env');  // ← You already added this
 
-// Create transporter
-const createTransporter = () => {
-  if (!config.email.user || !config.email.password) {
-    console.warn('⚠️  Email credentials not configured');
-    return null;
-  }
+// // Create transporter
+// const transporter = nodemailer.createTransport({
+//   host: config.email.host,
+//   port: config.email.port,
+//   secure: false, // true for 465, false for other ports
+//   auth: {
+//     user: config.email.user,
+//     pass: config.email.password,
+//   },
+// });
 
-  return nodemailer.createTransport({
-    host: config.email.host,
-    port: config.email.port,
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: config.email.user,
-      pass: config.email.password,
-    },
-  });
-};
+// // Optional: Verify connection on startup
+// transporter.verify((error, success) => {
+//   if (error) {
+//     console.error('Email configuration error:', error);
+//   } else {
+//     console.log('Email server is ready to send messages');
+//   }
+// });
 
-// Send email
-exports.sendEmail = async (options) => {
-  try {
-    const transporter = createTransporter();
-    
-    if (!transporter) {
-      console.log('Email not sent - credentials not configured');
-      return { success: false, message: 'Email service not configured' };
-    }
+// // Your sendOTPEmail function
+// exports.sendOTPEmail = async (email, otp, purpose = 'reset') => {
+//   let subject, title, introMessage;
 
-    const mailOptions = {
-      from: config.email.from,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text,
-    };
+//   if (purpose === 'verification') {
+//     subject = 'Verify Your Email Address - OrderSync';
+//     title = 'Complete Your Registration';
+//     introMessage = 'Thank you for signing up! Please use this One-Time Password (OTP) to verify your email and activate your account.';
+//   } else {
+//     subject = 'Password Reset Request - OrderSync';
+//     title = 'Password Reset';
+//     introMessage = 'You requested to reset your password. Use the One-Time Password (OTP) below to proceed:';
+//   }
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email sent:', info.messageId);
-    
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
-    console.error('❌ Email sending error:', error);
-    throw new Error('Failed to send email');
-  }
-};
+//   const mailOptions = {
+//     from: config.email.from,
+//     to: email,
+//     subject,
+//     html: `
+//       <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif; background: #f9f9f9; border-radius: 12px; border: 1px solid #ddd;">
+//         <h1 style="text-align: center; color: #2563eb;">OrderSync</h1>
+//         <h2 style="text-align: center; color: #1f2937;">${title}</h2>
+        
+//         <p style="font-size: 16px; color: #444; text-align: center; line-height: 1.6;">
+//           ${introMessage}
+//         </p>
+        
+//         <div style="text-align: center; margin: 40px 0;">
+//           <div style="display: inline-block; background: #dbeafe; padding: 20px 40px; border-radius: 12px; font-size: 36px; letter-spacing: 10px; color: #2563eb; font-weight: bold;">
+//             ${otp}
+//           </div>
+//         </div>
+        
+//         <p style="text-align: center; color: #ef4444; font-weight: bold;">
+//           ⚠️ This OTP expires in 10 minutes
+//         </p>
+        
+//         <p style="text-align: center; color: #666; font-size: 14px;">
+//           If you didn't request this, please ignore this email.
+//         </p>
+        
+//         <hr style="margin: 40px 0; border: none; border-top: 1px solid #eee;" />
+        
+//         <p style="text-align: center; color: #999; font-size: 12px;">
+//           OrderSync - Order Your Favorite Food with Ease<br>
+//           This is an automated email. Please do not reply.
+//         </p>
+//       </div>
+//     `,
+//   };
 
-// Send order confirmation email
-exports.sendOrderConfirmationEmail = async (to, orderDetails) => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #3B82F6;">Order Confirmation</h2>
-      <p>Thank you for your order!</p>
-      
-      <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3>Order Details</h3>
-        <p><strong>Order Number:</strong> ${orderDetails.orderNumber}</p>
-        <p><strong>Total Amount:</strong> ₹${orderDetails.totalAmount}</p>
-        <p><strong>Order Date:</strong> ${new Date(orderDetails.orderDateTime).toLocaleString()}</p>
-      </div>
-      
-      <p>We'll notify you when your order is ready.</p>
-      
-      <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
-        Best regards,<br>
-        OrderSync Team
-      </p>
-    </div>
-  `;
-
-  return await this.sendEmail({
-    to,
-    subject: `Order Confirmation - ${orderDetails.orderNumber}`,
-    html,
-  });
-};
-
-// Send booking reminder email
-exports.sendBookingReminderEmail = async (to, bookingDetails) => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #3B82F6;">Booking Reminder</h2>
-      <p>This is a reminder for your upcoming booking.</p>
-      
-      <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3>Booking Details</h3>
-        <p><strong>Date & Time:</strong> ${new Date(bookingDetails.bookingDateTime).toLocaleString()}</p>
-        <p><strong>Type:</strong> ${bookingDetails.bookingType}</p>
-        ${bookingDetails.specialRequests ? `<p><strong>Special Requests:</strong> ${bookingDetails.specialRequests}</p>` : ''}
-      </div>
-      
-      <p>We look forward to serving you!</p>
-      
-      <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
-        Best regards,<br>
-        OrderSync Team
-      </p>
-    </div>
-  `;
-
-  return await this.sendEmail({
-    to,
-    subject: 'Booking Reminder - OrderSync',
-    html,
-  });
-};
-
-// Send payment receipt email
-exports.sendPaymentReceiptEmail = async (to, paymentDetails) => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #10B981;">Payment Successful</h2>
-      <p>Your payment has been received successfully.</p>
-      
-      <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h3>Payment Details</h3>
-        <p><strong>Amount Paid:</strong> ₹${paymentDetails.amount}</p>
-        <p><strong>Payment ID:</strong> ${paymentDetails.razorpay_payment_id}</p>
-        <p><strong>Date:</strong> ${new Date(paymentDetails.paidAt).toLocaleString()}</p>
-      </div>
-      
-      <p>Thank you for your payment!</p>
-      
-      <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
-        Best regards,<br>
-        OrderSync Team
-      </p>
-    </div>
-  `;
-
-  return await this.sendEmail({
-    to,
-    subject: 'Payment Receipt - OrderSync',
-    html,
-  });
-};
+//   try {
+//     await transporter.sendMail(mailOptions);  // ← This line needs 'transporter' to exist
+//     console.log(`OTP email sent to ${email} for ${purpose}`);
+//   } catch (error) {
+//     console.error('Error sending OTP email:', error);
+//     throw new Error('Failed to send email');
+//   }
+// };
