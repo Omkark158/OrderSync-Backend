@@ -20,6 +20,12 @@ router.use(protect);
 // Order routes
 router.post('/', createOrderValidator, validateRequest, createOrder);
 router.get('/', getOrders);
+
+// Order invoice routes 
+router.get('/:id/invoice', getOrderInvoice);
+router.post('/:id/send-invoice-sms', sendOrderInvoiceSMS);
+
+// Get order by ID 
 router.get('/:id', getOrderById);
 router.get('/phone/:phone', getOrdersByPhone);
 
@@ -28,9 +34,5 @@ router.put('/:id/cancel', cancelOrder);
 
 // Update order status (admin only)
 router.put('/:id/status', authorize('admin'), updateOrderStatus);
-
-//order invoice routes 
-router.get('/:id/invoice', getOrderInvoice);
-router.post('/:id/send-invoice-sms', sendOrderInvoiceSMS);
 
 module.exports = router;
