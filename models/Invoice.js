@@ -1,6 +1,8 @@
 // ============================================
 // 6. INVOICE MODEL (models/Invoice.js) - COMPLETE
 // ============================================
+const mongoose = require("mongoose");
+
 const invoiceSchema = new mongoose.Schema(
   {
     invoiceNumber: {

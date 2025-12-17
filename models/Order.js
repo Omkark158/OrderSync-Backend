@@ -1,6 +1,9 @@
 // ============================================
 // 3. ORDER MODEL (models/Order.js) - UPDATED
 // ============================================
+
+const mongoose = require("mongoose");
+
 const orderSchema = new mongoose.Schema(
   {
     user: {

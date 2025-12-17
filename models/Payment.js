@@ -1,5 +1,7 @@
 // 4. PAYMENT MODEL (models/Payment.js) - UPDATED
 // ============================================
+const mongoose = require("mongoose");
+
 const paymentSchema = new mongoose.Schema(
   {
     order: {

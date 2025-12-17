@@ -1,7 +1,7 @@
 const Order = require('../models/Order');
 const Menu = require('../models/Menu');
 const Invoice = require('../models/Invoice');
-const smsService = require('../utils/smsService');
+const smsService = require('../services/smsService'); // ✅ FIXED: Changed from ../utils to ../services
 
 // @desc    Create new order
 // @route   POST /api/orders
