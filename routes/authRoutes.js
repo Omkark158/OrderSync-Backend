@@ -1,3 +1,4 @@
+// routes/authRoutes.js - FIXED WITH ADMIN LOGIN
 const express = require('express');
 const router = express.Router();
 const {
@@ -10,6 +11,7 @@ const {
   getMe,
   logout,
 } = require('../controllers/authController');
+const { hiddenAdminLogin } = require('../controllers/adminController'); // ✅ ADD THIS
 const { protect } = require('../middleware/auth');
 const {
   signupValidator,
@@ -18,15 +20,18 @@ const {
 } = require('../validators/authValidator');
 const { validate } = require('../middleware/validate');
 
+// ✅ ADMIN LOGIN ROUTE - ADD THIS AT THE TOP
+router.post('/admin-login', hiddenAdminLogin);
+
 // Signup routes
 router.post('/signup', signupValidator, validate, signup);
-router.post('/verify-signup', verifyOTPValidator, validate, verifySignupOTP); // ✅ RENAMED
-router.post('/resend-signup', resendSignupOTP); // ✅ RENAMED
+router.post('/verify-signup', verifyOTPValidator, validate, verifySignupOTP);
+router.post('/resend-signup', resendSignupOTP);
 
 // Login routes
 router.post('/login', loginValidator, validate, login);
-router.post('/verify-login', verifyOTPValidator, validate, verifyLoginOTP); // ✅ SHORT
-router.post('/resend-login', resendLoginOTP); // ✅ SHORT
+router.post('/verify-login', verifyOTPValidator, validate, verifyLoginOTP);
+router.post('/resend-login', resendLoginOTP);
 
 // Protected routes
 router.get('/me', protect, getMe);
