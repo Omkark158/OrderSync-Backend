@@ -1,3 +1,4 @@
+// services/invoiceService.js - Exact Sachin Foods Format
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
@@ -9,13 +10,17 @@ if (!fs.existsSync(invoicesDir)) {
 }
 
 /**
- * Generate PDF invoice similar to Sachin Foods format
+ * Generate PDF invoice - EXACT Sachin Foods Format
  */
 exports.generateInvoicePDF = async (invoice) => {
   return new Promise((resolve, reject) => {
     try {
       // Create PDF document
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const doc = new PDFDocument({ 
+        margin: 40,
+        size: 'A4',
+        bufferPages: true
+      });
 
       // File path
       const fileName = `invoice_${invoice.invoiceNumber}_${Date.now()}.pdf`;
@@ -24,234 +29,294 @@ exports.generateInvoicePDF = async (invoice) => {
 
       doc.pipe(stream);
 
-      // Header - Company Info
+      // ========================================
+      // HEADER - Company Name
+      // ========================================
       doc
-        .fontSize(24)
-        .fillColor('#d32f2f')
+        .fontSize(28)
+        .fillColor('#000')
+        .font('Helvetica-Bold')
         .text('SACHIN FOODS', { align: 'center' })
-        .moveDown(0.3);
+        .moveDown(0.5);
 
+      // ========================================
+      // Company Details (Mobile & GSTIN)
+      // ========================================
       doc
         .fontSize(10)
+        .font('Helvetica')
         .fillColor('#000')
-        .text('Manufacturing & Marketing of Chappathy, Appam', { align: 'center' })
-        .text('Veesappam, Pathiri, Arippathiri & Bakery Items', { align: 'center' })
-        .moveDown(0.2);
-
-      doc
-        .fontSize(9)
-        .text('Kundara, Kollam, Ph: 9539387240, 9388808825, 8547828825', { align: 'center' })
-        .moveDown(0.3);
-
-      doc
-        .fontSize(8)
         .text('Mobile: 9544938753', { align: 'center' })
         .text('GSTIN: 32BMDPB7722C1ZR', { align: 'center' })
         .moveDown(1);
 
-      // Invoice Details
-      const invoiceY = doc.y;
+      // ========================================
+      // Invoice Number and Date
+      // ========================================
+      const invoiceInfoY = doc.y;
+      
       doc
         .fontSize(10)
-        .text(`Invoice No.: ${invoice.invoiceNumber}`, 50, invoiceY)
-        .text(`Invoice Date: ${formatDate(invoice.invoiceDate)}`, 350, invoiceY);
+        .font('Helvetica')
+        .text(`Invoice No.: ${invoice.invoiceNumber}`, 50, invoiceInfoY)
+        .text(`Invoice Date: ${formatDate(invoice.invoiceDate)}`, 350, invoiceInfoY);
 
-      doc.moveDown(1.5);
+      doc.moveDown(2);
 
-      // Bill To and Ship To
-      const billY = doc.y;
+      // ========================================
+      // BILL TO & SHIP TO
+      // ========================================
+      const customerY = doc.y;
       
-      // Bill To
-      doc.fontSize(10).text('BILL TO', 50, billY);
-      doc.fontSize(9)
-        .text(invoice.customerName, 50, billY + 20)
-        .text(`Mobile: ${invoice.customerPhone}`, 50, billY + 35);
+      // BILL TO
+      doc
+        .fontSize(11)
+        .font('Helvetica-Bold')
+        .text('BILL TO', 50, customerY);
+      
+      doc
+        .fontSize(10)
+        .font('Helvetica')
+        .text(invoice.customerName || 'Cash Sale', 50, customerY + 20)
+        .text(`Mobile: ${invoice.customerPhone}`, 50, customerY + 35);
       
       if (invoice.billingAddress && invoice.billingAddress.street) {
-        doc.text(invoice.billingAddress.street, 50, billY + 50);
+        doc
+          .fontSize(9)
+          .text(invoice.billingAddress.street, 50, customerY + 50, { width: 200 });
         if (invoice.billingAddress.city) {
           doc.text(
-            `${invoice.billingAddress.city}, ${invoice.billingAddress.state} - ${invoice.billingAddress.pincode}`,
+            `${invoice.billingAddress.city}, ${invoice.billingAddress.state || ''} - ${invoice.billingAddress.pincode || ''}`,
             50,
-            billY + 65
+            customerY + 65,
+            { width: 200 }
           );
         }
       }
 
-      // Ship To
-      doc.fontSize(10).text('SHIP TO', 350, billY);
-      doc.fontSize(9).text(invoice.customerName || 'Same as Billing', 350, billY + 20);
+      // SHIP TO
+      doc
+        .fontSize(11)
+        .font('Helvetica-Bold')
+        .text('SHIP TO', 350, customerY);
+      
+      doc
+        .fontSize(10)
+        .font('Helvetica')
+        .text(invoice.customerName || 'Cash Sale', 350, customerY + 20);
       
       if (invoice.shippingAddress && invoice.shippingAddress.street) {
-        doc.text(invoice.shippingAddress.street, 350, billY + 35);
+        doc
+          .fontSize(9)
+          .text(invoice.shippingAddress.street, 350, customerY + 35, { width: 200 });
         if (invoice.shippingAddress.city) {
           doc.text(
-            `${invoice.shippingAddress.city}, ${invoice.shippingAddress.state} - ${invoice.shippingAddress.pincode}`,
+            `${invoice.shippingAddress.city}, ${invoice.shippingAddress.state || ''}`,
             350,
-            billY + 50
+            customerY + 50,
+            { width: 200 }
           );
         }
       }
 
       doc.moveDown(6);
 
-      // Delivery Date (if future order)
-      if (invoice.deliveryDate) {
-        doc
-          .fontSize(10)
-          .fillColor('#d32f2f')
-          .text(`Delivery Date: ${formatDate(invoice.deliveryDate)}`, { align: 'center' })
-          .fillColor('#000')
-          .moveDown(1);
-      }
-
-      // Items Table
+      // ========================================
+      // ITEMS TABLE
+      // ========================================
       const tableTop = doc.y;
-      const itemsTableTop = tableTop;
+      let currentY = tableTop;
 
-      // Table Header
+      // Table Header - Black background
       doc
-        .fontSize(9)
-        .fillColor('#fff')
-        .rect(50, itemsTableTop, 500, 20)
-        .fill('#4a4a4a');
+        .rect(50, currentY, 500, 25)
+        .fillAndStroke('#000', '#000');
 
       doc
+        .fontSize(10)
         .fillColor('#fff')
-        .text('ITEMS', 55, itemsTableTop + 5)
-        .text('QTY.', 300, itemsTableTop + 5)
-        .text('RATE', 380, itemsTableTop + 5)
-        .text('AMOUNT', 480, itemsTableTop + 5);
+        .font('Helvetica-Bold')
+        .text('ITEMS', 60, currentY + 8, { width: 220 })
+        .text('QTY.', 280, currentY + 8, { width: 50 })
+        .text('RATE', 350, currentY + 8, { width: 80 })
+        .text('AMOUNT', 450, currentY + 8, { width: 90 });
 
-      // Table Rows
-      let yPosition = itemsTableTop + 25;
-      doc.fillColor('#000');
+      currentY += 25;
+
+      // Table Rows - No background, just text
+      doc.fillColor('#000').font('Helvetica');
 
       invoice.items.forEach((item, i) => {
-        if (yPosition > 700) {
+        if (currentY > 700) {
           doc.addPage();
-          yPosition = 50;
+          currentY = 50;
         }
 
-        const bgColor = i % 2 === 0 ? '#f5f5f5' : '#fff';
-        doc.rect(50, yPosition - 5, 500, 20).fill(bgColor);
-
         doc
-          .fillColor('#000')
-          .fontSize(9)
-          .text(item.name.toUpperCase(), 55, yPosition)
-          .text(item.quantity, 300, yPosition)
-          .text(`₹${item.rate}`, 380, yPosition)
-          .text(`₹${item.amount}`, 480, yPosition);
+          .fontSize(10)
+          .text(item.name.toUpperCase(), 60, currentY + 5, { width: 220 })
+          .text(item.quantity.toString(), 280, currentY + 5, { width: 50 })
+          .text(`₹ ${item.rate}`, 350, currentY + 5, { width: 80 })
+          .text(`₹ ${item.amount}`, 450, currentY + 5, { width: 90 });
 
-        yPosition += 20;
+        currentY += 25;
       });
 
-      doc.moveDown(2);
-
-      // Totals Section
-      const totalsY = yPosition + 20;
-      const totalsX = 350;
-
-      doc.fontSize(9);
-      
-      // Subtotal
+      // Bottom border of table
       doc
-        .text('SUBTOTAL', totalsX, totalsY)
-        .text(`₹${invoice.subtotal.toFixed(2)}`, 480, totalsY, { width: 70, align: 'right' });
+        .moveTo(50, currentY)
+        .lineTo(550, currentY)
+        .stroke('#000');
 
-      let currentY = totalsY + 15;
+      doc.moveDown(2);
+      currentY = doc.y;
 
-      // Tax Details
+      // ========================================
+      // SUBTOTAL
+      // ========================================
+      currentY += 10;
+      doc
+        .fontSize(11)
+        .font('Helvetica-Bold')
+        .text('SUBTOTAL', 350, currentY)
+        .text(`₹ ${invoice.subtotal.toFixed(0)}`, 450, currentY, { width: 90, align: 'left' });
+
+      currentY += 30;
+
+      // ========================================
+      // NOTES
+      // ========================================
+      doc
+        .fontSize(11)
+        .font('Helvetica-Bold')
+        .text('NOTES', 50, currentY);
+      
+      doc
+        .fontSize(10)
+        .font('Helvetica')
+        .text(invoice.notes || "Don't waste food", 50, currentY + 18);
+
+      currentY += 60;
+
+      // ========================================
+      // TERMS AND CONDITIONS
+      // ========================================
+      doc
+        .fontSize(11)
+        .font('Helvetica-Bold')
+        .text('TERMS AND CONDITIONS', 50, currentY);
+      
+      currentY += 18;
+
+      doc.fontSize(9).font('Helvetica');
+      invoice.termsAndConditions.forEach((term, i) => {
+        doc.text(`${i + 1}. ${term}`, 50, currentY);
+        currentY += 15;
+      });
+
+      currentY += 20;
+
+      // ========================================
+      // FINANCIAL SUMMARY (Right Side)
+      // ========================================
+      let summaryY = doc.y - 120; // Position on right side
+      const summaryX = 350;
+
+      // Tax Details (if applicable)
       if (invoice.taxDetails && invoice.taxDetails.totalTax > 0) {
         if (invoice.taxDetails.cgst.amount > 0) {
           doc
-            .text(`CGST (${invoice.taxDetails.cgst.rate}%)`, totalsX, currentY)
-            .text(`₹${invoice.taxDetails.cgst.amount.toFixed(2)}`, 480, currentY, { width: 70, align: 'right' });
-          currentY += 15;
+            .fontSize(10)
+            .font('Helvetica')
+            .text(`CGST (${invoice.taxDetails.cgst.rate}%)`, summaryX, summaryY)
+            .text(`₹ ${invoice.taxDetails.cgst.amount.toFixed(2)}`, 450, summaryY, { width: 90, align: 'left' });
+          summaryY += 18;
 
           doc
-            .text(`SGST (${invoice.taxDetails.sgst.rate}%)`, totalsX, currentY)
-            .text(`₹${invoice.taxDetails.sgst.amount.toFixed(2)}`, 480, currentY, { width: 70, align: 'right' });
-          currentY += 15;
+            .text(`SGST (${invoice.taxDetails.sgst.rate}%)`, summaryX, summaryY)
+            .text(`₹ ${invoice.taxDetails.sgst.amount.toFixed(2)}`, 450, summaryY, { width: 90, align: 'left' });
+          summaryY += 18;
         }
 
         if (invoice.taxDetails.igst.amount > 0) {
           doc
-            .text(`IGST (${invoice.taxDetails.igst.rate}%)`, totalsX, currentY)
-            .text(`₹${invoice.taxDetails.igst.amount.toFixed(2)}`, 480, currentY, { width: 70, align: 'right' });
-          currentY += 15;
+            .text(`IGST (${invoice.taxDetails.igst.rate}%)`, summaryX, summaryY)
+            .text(`₹ ${invoice.taxDetails.igst.amount.toFixed(2)}`, 450, summaryY, { width: 90, align: 'left' });
+          summaryY += 18;
         }
 
         doc
-          .text('TAXABLE AMOUNT', totalsX, currentY)
-          .text(`₹${invoice.subtotal.toFixed(2)}`, 480, currentY, { width: 70, align: 'right' });
-        currentY += 20;
+          .font('Helvetica-Bold')
+          .text('TAXABLE AMOUNT', summaryX, summaryY)
+          .text(`₹ ${invoice.subtotal.toFixed(0)}`, 450, summaryY, { width: 90, align: 'left' });
+        summaryY += 25;
+      } else {
+        // If no tax, show TAXABLE AMOUNT same as subtotal
+        doc
+          .font('Helvetica-Bold')
+          .text('TAXABLE AMOUNT', summaryX, summaryY)
+          .text(`₹ ${invoice.subtotal.toFixed(0)}`, 450, summaryY, { width: 90, align: 'left' });
+        summaryY += 25;
       }
 
-      // Total Amount
+      // TOTAL AMOUNT
       doc
         .fontSize(11)
-        .fillColor('#d32f2f')
-        .text('TOTAL AMOUNT', totalsX, currentY)
-        .text(`₹${invoice.totalAmount.toFixed(2)}`, 480, currentY, { width: 70, align: 'right' })
-        .fillColor('#000');
-      currentY += 20;
+        .font('Helvetica-Bold')
+        .text('TOTAL AMOUNT', summaryX, summaryY)
+        .text(`₹ ${invoice.totalAmount.toFixed(0)}`, 450, summaryY, { width: 90, align: 'left' });
+      summaryY += 20;
 
-      // Payment Details
-      doc.fontSize(9);
-      doc
-        .text('Received Amount', totalsX, currentY)
-        .text(`₹${invoice.receivedAmount.toFixed(2)}`, 480, currentY, { width: 70, align: 'right' });
-      currentY += 15;
-
-      doc
-        .text('Balance', totalsX, currentY)
-        .text(`₹${invoice.balance.toFixed(2)}`, 480, currentY, { width: 70, align: 'right' });
-      currentY += 20;
-
-      // Amount in Words
+      // Received Amount
       doc
         .fontSize(10)
-        .text('Total Amount (in words)', 50, currentY)
-        .fontSize(9)
-        .fillColor('#d32f2f')
-        .text(invoice.getAmountInWords(), 50, currentY + 15)
-        .fillColor('#000');
+        .font('Helvetica')
+        .text('Received Amount', summaryX, summaryY)
+        .text(`₹ ${invoice.receivedAmount.toFixed(0)}`, 450, summaryY, { width: 90, align: 'left' });
+      summaryY += 18;
 
-      // Notes and Terms
+      // Balance
+      doc
+        .text('Balance', summaryX, summaryY)
+        .text(`₹ ${invoice.balance.toFixed(0)}`, 450, summaryY, { width: 90, align: 'left' });
+
+      // ========================================
+      // AMOUNT IN WORDS
+      // ========================================
+      doc.moveDown(4);
+      currentY = Math.max(doc.y, summaryY + 40);
+
+      doc
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text('Total Amount (in words)', 50, currentY);
+      
+      doc
+        .fontSize(10)
+        .font('Helvetica')
+        .text(invoice.getAmountInWords(), 50, currentY + 18, { width: 500 });
+
       doc.moveDown(3);
-      
-      if (invoice.notes) {
-        doc
-          .fontSize(10)
-          .text('NOTES', 50)
-          .fontSize(9)
-          .text(invoice.notes, 50);
-        doc.moveDown(1);
-      }
 
+      // ========================================
+      // FOOTER - Invoice Type
+      // ========================================
       doc
-        .fontSize(10)
-        .text('TERMS AND CONDITIONS', 50)
-        .fontSize(8);
-      
-      invoice.termsAndConditions.forEach((term, i) => {
-        doc.text(`${i + 1}. ${term}`, 50);
-      });
-
-      // Footer
-      doc.moveDown(2);
-      doc
-        .fontSize(10)
-        .fillColor('#d32f2f')
-        .text(`${invoice.invoiceType.replace('_', ' ').toUpperCase()} ORIGINAL`, { align: 'center' })
-        .fillColor('#000');
+        .fontSize(12)
+        .font('Helvetica-Bold')
+        .fillColor('#000')
+        .text(
+          invoice.invoiceType === 'tax_invoice' ? 'TAX INVOICE ORIGINAL' : 
+          invoice.invoiceType === 'cash_sale' ? 'CASH SALE ORIGINAL' :
+          'BILL OF SUPPLY ORIGINAL', 
+          { align: 'center' }
+        );
 
       // Finalize PDF
       doc.end();
 
       stream.on('finish', () => {
+        console.log('✅ PDF generated successfully');
         resolve({
           path: filePath,
           url: `/invoices/${fileName}`,
@@ -260,9 +325,11 @@ exports.generateInvoicePDF = async (invoice) => {
       });
 
       stream.on('error', (err) => {
+        console.error('❌ PDF stream error:', err);
         reject(err);
       });
     } catch (error) {
+      console.error('❌ PDF generation error:', error);
       reject(error);
     }
   });

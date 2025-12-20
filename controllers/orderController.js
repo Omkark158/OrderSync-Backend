@@ -1,13 +1,19 @@
+// controllers/orderController.js - With enhanced debugging
 const Order = require('../models/Order');
 const Menu = require('../models/Menu');
 const Invoice = require('../models/Invoice');
-const smsService = require('../services/smsService'); // ✅ FIXED: Changed from ../utils to ../services
+const smsService = require('../services/smsService');
 
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
 exports.createOrder = async (req, res, next) => {
   try {
+    console.log('📝 Create order request received');
+    console.log('User ID:', req.user?.id);
+    console.log('User Name:', req.user?.name);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+
     const {
       orderItems,
       deliveryAddress,
@@ -17,21 +23,45 @@ exports.createOrder = async (req, res, next) => {
       specialInstructions,
     } = req.body;
 
+    // Validate required fields
+    if (!orderItems || orderItems.length === 0) {
+      console.error('❌ No order items');
+      return res.status(400).json({
+        success: false,
+        message: 'Order items are required',
+      });
+    }
+
+    if (!deliveryAddress) {
+      console.error('❌ No delivery address');
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery address is required',
+      });
+    }
+
     // Validate order items and calculate total
     let totalAmount = 0;
     const validatedItems = [];
 
+    console.log(`🔍 Validating ${orderItems.length} items...`);
+
     for (const item of orderItems) {
+      console.log(`Checking item: ${item.menuItem}`);
       const menuItem = await Menu.findById(item.menuItem);
 
       if (!menuItem) {
+        console.error(`❌ Menu item not found: ${item.menuItem}`);
         return res.status(404).json({
           success: false,
           message: `Menu item ${item.menuItem} not found`,
         });
       }
 
+      console.log(`✅ Found: ${menuItem.name}`);
+
       if (!menuItem.isAvailable) {
+        console.error(`❌ Item unavailable: ${menuItem.name}`);
         return res.status(400).json({
           success: false,
           message: `${menuItem.name} is currently unavailable`,
@@ -50,7 +80,10 @@ exports.createOrder = async (req, res, next) => {
       });
     }
 
+    console.log(`✅ Items validated. Total: ₹${totalAmount}`);
+
     // Create order
+    console.log('💾 Creating order...');
     const order = await Order.create({
       user: req.user.id,
       customerName: req.user.name,
@@ -65,8 +98,11 @@ exports.createOrder = async (req, res, next) => {
       specialInstructions,
     });
 
+    console.log(`✅ Order created: ${order._id}`);
+
     // Populate menu items
     await order.populate('orderItems.menuItem');
+    console.log('✅ Order populated');
 
     res.status(201).json({
       success: true,
@@ -74,7 +110,14 @@ exports.createOrder = async (req, res, next) => {
       data: order,
     });
   } catch (error) {
-    next(error);
+    console.error('❌ Create order error:', error.message);
+    console.error('Stack:', error.stack);
+    
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create order',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
   }
 };
 
@@ -105,6 +148,7 @@ exports.getOrders = async (req, res, next) => {
       data: orders,
     });
   } catch (error) {
+    console.error('Get orders error:', error);
     next(error);
   }
 };
@@ -138,6 +182,7 @@ exports.getOrderById = async (req, res, next) => {
       data: order,
     });
   } catch (error) {
+    console.error('Get order by ID error:', error);
     next(error);
   }
 };
@@ -167,6 +212,7 @@ exports.getOrdersByPhone = async (req, res, next) => {
       data: orders,
     });
   } catch (error) {
+    console.error('Get orders by phone error:', error);
     next(error);
   }
 };
@@ -208,6 +254,7 @@ exports.updateOrderStatus = async (req, res, next) => {
       data: order,
     });
   } catch (error) {
+    console.error('Update order status error:', error);
     next(error);
   }
 };
@@ -254,10 +301,14 @@ exports.cancelOrder = async (req, res, next) => {
       data: order,
     });
   } catch (error) {
+    console.error('Cancel order error:', error);
     next(error);
   }
 };
 
+// @desc    Send order invoice via SMS
+// @route   POST /api/orders/:id/send-invoice-sms
+// @access  Private
 exports.sendOrderInvoiceSMS = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id).populate('user');
@@ -300,11 +351,14 @@ exports.sendOrderInvoiceSMS = async (req, res, next) => {
       invoiceUrl,
     });
   } catch (error) {
+    console.error('Send invoice SMS error:', error);
     next(error);
   }
 };
 
-// ADD THIS FUNCTION - Get invoice for order
+// @desc    Get invoice for order
+// @route   GET /api/orders/:id/invoice
+// @access  Private
 exports.getOrderInvoice = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -338,6 +392,7 @@ exports.getOrderInvoice = async (req, res, next) => {
       data: invoice,
     });
   } catch (error) {
+    console.error('Get order invoice error:', error);
     next(error);
   }
 };

@@ -1,3 +1,4 @@
+// routes/orderRoutes.js - CORRECTED route ordering
 const express = require('express');
 const router = express.Router();
 const {
@@ -17,22 +18,21 @@ const validateRequest = require('../middleware/validateRequest');
 // All routes require authentication
 router.use(protect);
 
-// Order routes
+// ⚠️ CRITICAL: ALL specific routes MUST come BEFORE :id routes
+// Order creation and listing (no params)
 router.post('/', createOrderValidator, validateRequest, createOrder);
 router.get('/', getOrders);
 
-// Order invoice routes 
-router.get('/:id/invoice', getOrderInvoice);
-router.post('/:id/send-invoice-sms', sendOrderInvoiceSMS);
-
-// Get order by ID 
-router.get('/:id', getOrderById);
+// Specific routes with static path segments (BEFORE :id)
 router.get('/phone/:phone', getOrdersByPhone);
 
-// Cancel order (user or admin)
+// Order-specific action routes (BEFORE generic :id route)
+router.get('/:id/invoice', getOrderInvoice);
+router.post('/:id/send-invoice-sms', sendOrderInvoiceSMS);
 router.put('/:id/cancel', cancelOrder);
-
-// Update order status (admin only)
 router.put('/:id/status', authorize('admin'), updateOrderStatus);
+
+// Generic :id route MUST be last
+router.get('/:id', getOrderById);
 
 module.exports = router;

@@ -1,32 +1,34 @@
-// ============================================
-// 3. ORDER MODEL (models/Order.js) - UPDATED
-// ============================================
-
-const mongoose = require("mongoose");
+// models/Order.js
+const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema(
   {
+    orderNumber: {
+      type: String,
+      unique: true, // ✅ unique index only once
+    },
+
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+      index: true,
     },
-    orderNumber: {
-      type: String,
-      unique: true,
-    },
+
     customerName: {
       type: String,
-      required: [true, 'Customer name is required'],
+      required: true,
     },
+
     customerPhone: {
       type: String,
-      required: [true, 'Customer phone is required'],
-      match: [/^[6-9]\d{9}$/, 'Invalid phone number'],
+      required: true,
+      index: true,
     },
+
     customerEmail: String,
-    customerGSTIN: String, // NEW - For business customers
-    
+    customerGSTIN: String,
+
     orderItems: [
       {
         menuItem: {
@@ -34,200 +36,145 @@ const orderSchema = new mongoose.Schema(
           ref: 'Menu',
           required: true,
         },
-        name: {
-          type: String,
-          required: true,
-        },
-        quantity: {
-          type: Number,
-          required: true,
-          min: [1, 'Quantity must be at least 1'],
-        },
-        price: {
-          type: Number,
-          required: true,
-        },
-        subtotal: {
-          type: Number,
-          required: true,
-        },
+        name: { type: String, required: true },
+        quantity: { type: Number, required: true, min: 1 },
+        price: { type: Number, required: true },
+        subtotal: { type: Number, required: true },
       },
     ],
-    
-    // Billing and Shipping
-    billingAddress: {
-      street: String,
-      city: String,
-      state: String,
-      pincode: String,
-    },
+
     deliveryAddress: {
-      street: String,
-      city: String,
-      state: String,
-      pincode: String,
+      street: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      pincode: { type: String, required: true },
     },
-    
+
     orderDateTime: {
       type: Date,
-      required: [true, 'Order date and time is required'],
-    },
-    
-    // Amounts
-    subtotal: {
-      type: Number,
-      default: 0,
-    },
-    
-    // GST Details - NEW
-    gstDetails: {
-      cgst: {
-        rate: { type: Number, default: 0 },
-        amount: { type: Number, default: 0 },
-      },
-      sgst: {
-        rate: { type: Number, default: 0 },
-        amount: { type: Number, default: 0 },
-      },
-      igst: {
-        rate: { type: Number, default: 0 },
-        amount: { type: Number, default: 0 },
-      },
-      totalTax: {
-        type: Number,
-        default: 0,
-      },
-    },
-    
-    totalAmount: {
-      type: Number,
       required: true,
-      min: 0,
+      index: true,
     },
-    advancePayment: {
-      type: Number,
-      default: 0,
-      min: 0,
+
+    isFutureOrder: { type: Boolean, default: false },
+
+    subtotal: { type: Number, default: 0 },
+
+    gstDetails: {
+      isTaxable: { type: Boolean, default: false },
+      cgst: { rate: Number, amount: Number },
+      sgst: { rate: Number, amount: Number },
+      igst: { rate: Number, amount: Number },
+      totalTax: { type: Number, default: 0 },
     },
-    remainingAmount: {
-      type: Number,
-      default: 0,
-    },
-    
+
+    totalAmount: { type: Number, required: true },
+    advancePayment: { type: Number, default: 0 },
+    remainingAmount: { type: Number, default: 0 },
+
     paymentMethod: {
       type: String,
-      enum: ['full', 'advance', 'cash', 'online'],
-      default: 'full',
+      enum: ['cash', 'online', 'upi', 'card'],
+      default: 'cash',
     },
+
     paymentStatus: {
       type: String,
       enum: ['pending', 'partial', 'completed', 'failed', 'refunded'],
       default: 'pending',
+      index: true,
     },
+
     orderStatus: {
       type: String,
-      enum: ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'],
+      enum: ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled', 'denied'],
       default: 'pending',
+      index: true,
     },
-    
-    specialInstructions: {
-      type: String,
-      maxlength: [500, 'Instructions cannot exceed 500 characters'],
-    },
-    
-    isFutureOrder: {
-      type: Boolean,
-      default: false,
-    },
-    estimatedDeliveryTime: Date,
+
+    specialInstructions: String,
+
+    invoice: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice' },
+    invoiceGenerated: { type: Boolean, default: false },
+
+    confirmedAt: Date,
+    preparingAt: Date,
+    readyAt: Date,
+    deliveredAt: Date,
     actualDeliveryTime: Date,
-    
-    // Invoice Integration - NEW
-    invoiceGenerated: {
-      type: Boolean,
-      default: false,
-    },
-    invoice: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Invoice',
-    },
-    
+
+    deniedAt: Date,
+    denialReason: String,
+    deniedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
     cancelledAt: Date,
     cancellationReason: String,
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    notes: String,
+    adminNotes: String,
+
+    smsNotifications: {
+      adminNotified: { type: Boolean, default: false },
+      customerConfirmed: { type: Boolean, default: false },
+      customerDenied: { type: Boolean, default: false },
+      invoiceSent: { type: Boolean, default: false },
+    },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-orderSchema.pre('save', async function (next) {
-  // Generate order number
+// ================= PRE-SAVE HOOK =================
+orderSchema.pre('save', async function () {
   if (!this.orderNumber) {
     const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `ORD${Date.now()}${String(count + 1).padStart(4, '0')}`;
+    const now = new Date();
+    this.orderNumber = `SF${now.getFullYear()}${String(
+      now.getMonth() + 1
+    ).padStart(2, '0')}${String(count + 1).padStart(4, '0')}`;
   }
 
-  // Calculate subtotal
-  this.subtotal = this.orderItems.reduce((sum, item) => sum + item.subtotal, 0);
-
-  // Calculate GST
-  const isKeralaCustomer = 
-    this.deliveryAddress?.state?.toLowerCase() === 'kerala' ||
-    this.billingAddress?.state?.toLowerCase() === 'kerala';
-  
-  const gstRate = 5; // 5% GST
-  
-  if (isKeralaCustomer) {
-    // CGST + SGST
-    const cgstRate = gstRate / 2;
-    const sgstRate = gstRate / 2;
-    this.gstDetails.cgst.rate = cgstRate;
-    this.gstDetails.cgst.amount = (this.subtotal * cgstRate) / 100;
-    this.gstDetails.sgst.rate = sgstRate;
-    this.gstDetails.sgst.amount = (this.subtotal * sgstRate) / 100;
-    this.gstDetails.igst.rate = 0;
-    this.gstDetails.igst.amount = 0;
-  } else {
-    // IGST
-    this.gstDetails.igst.rate = gstRate;
-    this.gstDetails.igst.amount = (this.subtotal * gstRate) / 100;
-    this.gstDetails.cgst.rate = 0;
-    this.gstDetails.cgst.amount = 0;
-    this.gstDetails.sgst.rate = 0;
-    this.gstDetails.sgst.amount = 0;
+  if (this.orderItems?.length) {
+    this.subtotal = this.orderItems.reduce((sum, i) => sum + i.subtotal, 0);
   }
-  
-  this.gstDetails.totalTax = 
-    this.gstDetails.cgst.amount + 
-    this.gstDetails.sgst.amount + 
-    this.gstDetails.igst.amount;
 
-  // Calculate total amount including GST
-  this.totalAmount = this.subtotal + this.gstDetails.totalTax;
-  
-  // Calculate remaining amount
   this.remainingAmount = this.totalAmount - this.advancePayment;
 
-  // Update payment status
-  if (this.advancePayment === 0) {
-    this.paymentStatus = 'pending';
-  } else if (this.advancePayment < this.totalAmount) {
-    this.paymentStatus = 'partial';
-  } else if (this.advancePayment >= this.totalAmount) {
-    this.paymentStatus = 'completed';
-  }
+  if (this.advancePayment === 0) this.paymentStatus = 'pending';
+  else if (this.advancePayment >= this.totalAmount) this.paymentStatus = 'completed';
+  else this.paymentStatus = 'partial';
 
-  // Check if future order
-  if (this.orderDateTime > new Date()) {
-    this.isFutureOrder = true;
-  }
+  this.isFutureOrder =
+    (new Date(this.orderDateTime) - Date.now()) / (1000 * 60 * 60) > 24;
 
-  next();
+  if (this.isModified('orderStatus')) {
+    const now = Date.now();
+    if (this.orderStatus === 'confirmed' && !this.confirmedAt) this.confirmedAt = now;
+    if (this.orderStatus === 'preparing' && !this.preparingAt) this.preparingAt = now;
+    if (this.orderStatus === 'ready' && !this.readyAt) this.readyAt = now;
+    if (this.orderStatus === 'delivered' && !this.deliveredAt) {
+      this.deliveredAt = now;
+      this.actualDeliveryTime = now;
+    }
+    if (this.orderStatus === 'denied' && !this.deniedAt) this.deniedAt = now;
+  }
 });
 
-orderSchema.index({ user: 1, orderStatus: 1 });
-orderSchema.index({ orderNumber: 1 });
-orderSchema.index({ customerPhone: 1 });
-orderSchema.index({ orderDateTime: 1 });
+// ================= VIRTUALS & METHODS =================
+orderSchema.virtual('orderAge').get(function () {
+  return Math.floor((Date.now() - this.createdAt) / (1000 * 60 * 60 * 24));
+});
+
+orderSchema.methods.canBeCancelled = function () {
+  return ['pending', 'confirmed'].includes(this.orderStatus);
+};
+
+orderSchema.methods.canBeDenied = function () {
+  return this.orderStatus === 'pending';
+};
+
+orderSchema.methods.canGenerateInvoice = function () {
+  return this.orderStatus === 'confirmed' && !this.invoiceGenerated;
+};
 
 module.exports = mongoose.model('Order', orderSchema);

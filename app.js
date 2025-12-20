@@ -1,9 +1,11 @@
-// app.js - FINAL & CORRECT
+// app.js - FIXED without static invoice serving
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const config = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./middleware/logger');
+
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -12,6 +14,9 @@ const menuRoutes = require('./routes/menuRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
+const smsRoutes = require('./routes/smsRoutes');
+
 
 const app = express();
 
@@ -22,7 +27,9 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+
+// ⚠️ IMPORTANT: Don't use express.json() for routes that serve binary data
+// We'll apply it selectively to routes that need it
 app.use(express.urlencoded({ extended: true }));
 app.use(logger);
 
@@ -31,16 +38,24 @@ app.get('/', (req, res) => {
   res.json({ success: true, message: 'OrderSync API is running', version: '1.0.0' });
 });
 
-// Routes
-app.use('/api/auth', authRoutes);      // ← This includes /api/auth/admin-login
-app.use('/api/users', userRoutes);
-app.use('/api/menu', menuRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/bookings', bookingRoutes);
+// ⚠️ Apply JSON parsing ONLY to non-binary routes
+app.use('/api/auth', express.json(), authRoutes);
+app.use('/api/users', express.json(), userRoutes);
+app.use('/api/menu', express.json(), menuRoutes);
+app.use('/api/orders', express.json(), orderRoutes);
+app.use('/api/payments', express.json(), paymentRoutes);
+app.use('/api/bookings', express.json(), bookingRoutes);
+app.use('/api/sms', express.json(), smsRoutes);
+
+// ✅ Invoice routes WITHOUT express.json() to preserve binary data
+app.use('/api/invoices', invoiceRoutes);
+
+// ❌ DO NOT serve invoices as static files - they need auth
+// app.use('/invoices', express.static(path.join(__dirname, 'public/invoices')));
 
 // 404 Handler
 app.use((req, res) => {
+  console.log('❌ 404 Not Found:', req.method, req.originalUrl);
   res.status(404).json({ success: false, message: 'Route not found' });
 });
 

@@ -1,4 +1,4 @@
-// models/User.js - FIXED (Mongoose async pre-save hook)
+// models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 
@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: [true, 'Please provide a phone number'],
-      unique: true,
+      unique: true, // ✅ creates unique index automatically
       match: [/^[6-9]\d{9}$/, 'Please provide a valid 10-digit Indian phone number'],
     },
 
@@ -34,6 +34,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['user', 'restaurant', 'delivery', 'admin'],
       default: 'user',
+      index: true, // ✅ single index (allowed)
     },
 
     isActive: {
@@ -66,9 +67,7 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
-    lastLogin: {
-      type: Date,
-    },
+    lastLogin: Date,
 
     addresses: [
       {
@@ -94,33 +93,24 @@ const userSchema = new mongoose.Schema(
       uppercase: true,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Indexes
-userSchema.index({ phone: 1 }, { unique: true });
-userSchema.index({ role: 1 });
-
-// ================= PASSWORD HASHING - FIXED =================
-// CORRECT WAY: async function WITHOUT next parameter
+// ================= PASSWORD HASHING =================
 userSchema.pre('save', async function () {
-  // Only hash if password exists and was modified
   if (this.password && this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, 12);
   }
-  // No next() needed — Mongoose awaits the async function automatically
 });
 
 // ================= METHODS =================
 userSchema.methods.comparePassword = async function (candidatePassword) {
   if (!this.password) return false;
-  return await bcrypt.compare(candidatePassword, this.password);
+  return bcrypt.compare(candidatePassword, this.password);
 };
 
 userSchema.methods.hasPasswordAuth = function () {
-  return !!this.password;
+  return Boolean(this.password);
 };
 
 module.exports = mongoose.model('User', userSchema);
