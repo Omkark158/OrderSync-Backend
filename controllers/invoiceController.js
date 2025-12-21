@@ -1,4 +1,4 @@
-// controllers/invoiceController.js - FIXED with proper binary streaming
+// controllers/invoiceController.js - COMPLETE FINAL VERSION
 const Invoice = require('../models/Invoice');
 const Order = require('../models/Order');
 const invoiceService = require('../services/invoiceService');
@@ -10,7 +10,7 @@ const path = require('path');
 // @access  Private/Admin
 exports.generateInvoice = async (req, res, next) => {
   try {
-    console.log('📝 Generate invoice for order:', req.params.orderId);
+    console.log('Generate invoice for order:', req.params.orderId);
     
     const order = await Order.findById(req.params.orderId)
       .populate('user', 'name email phone')
@@ -27,15 +27,24 @@ exports.generateInvoice = async (req, res, next) => {
     let invoice = await Invoice.findOne({ order: order._id });
 
     if (invoice) {
-      console.log('ℹ️ Invoice already exists:', invoice.invoiceNumber);
+      console.log('Invoice already exists:', invoice.invoiceNumber);
+
+      // Ensure order is linked to the existing invoice
+      if (!order.invoiceGenerated || order.invoice?.toString() !== invoice._id.toString()) {
+        order.invoiceGenerated = true;
+        order.invoice = invoice._id;
+        await order.save();
+        console.log('Order linked to existing invoice:', invoice._id);
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Invoice already exists',
-        data: invoice,
+        data: { invoice, invoiceGenerated: true },
       });
     }
 
-    // Prepare invoice data
+    // Create new invoice
     const invoiceData = {
       order: order._id,
       user: order.user._id,
@@ -68,14 +77,14 @@ exports.generateInvoice = async (req, res, next) => {
       },
     };
 
-    console.log('💾 Creating invoice...');
+    console.log('Creating new invoice...');
     invoice = await Invoice.create(invoiceData);
-    console.log('✅ Invoice created:', invoice.invoiceNumber);
+    console.log('Invoice created:', invoice.invoiceNumber);
 
     // Generate PDF
-    console.log('📄 Generating PDF...');
+    console.log('Generating PDF...');
     const pdfResult = await invoiceService.generateInvoicePDF(invoice);
-    console.log('✅ PDF generated:', pdfResult.fileName);
+    console.log('PDF generated:', pdfResult.fileName);
 
     // Update invoice with PDF details
     invoice.pdfUrl = pdfResult.url;
@@ -84,15 +93,20 @@ exports.generateInvoice = async (req, res, next) => {
     invoice.sentAt = Date.now();
     await invoice.save();
 
-    console.log('✅ Invoice generation complete');
+    // CRITICAL: Link invoice back to Order
+    order.invoiceGenerated = true;
+    order.invoice = invoice._id;
+    await order.save();
+    console.log('Order successfully linked to new invoice:', invoice._id);
 
     res.status(201).json({
       success: true,
       message: 'Invoice generated successfully',
-      data: invoice,
+      data: { invoice, invoiceGenerated: true },
     });
+
   } catch (error) {
-    console.error('❌ Generate invoice error:', error);
+    console.error('Generate invoice error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to generate invoice',
@@ -111,13 +125,8 @@ exports.getAllInvoices = async (req, res, next) => {
       query.user = req.user.id;
     }
 
-    if (req.query.status) {
-      query.status = req.query.status;
-    }
-
-    if (req.query.paymentStatus) {
-      query.paymentStatus = req.query.paymentStatus;
-    }
+    if (req.query.status) query.status = req.query.status;
+    if (req.query.paymentStatus) query.paymentStatus = req.query.paymentStatus;
 
     const invoices = await Invoice.find(query)
       .populate('user', 'name email phone')
@@ -140,7 +149,7 @@ exports.getAllInvoices = async (req, res, next) => {
 // @access  Private
 exports.getInvoiceById = async (req, res, next) => {
   try {
-    console.log('🔍 Getting invoice:', req.params.id);
+    console.log('Getting invoice:', req.params.id);
     
     const invoice = await Invoice.findById(req.params.id)
       .populate('user', 'name email phone')
@@ -153,7 +162,6 @@ exports.getInvoiceById = async (req, res, next) => {
       });
     }
 
-    // Check authorization
     if (invoice.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -176,7 +184,7 @@ exports.getInvoiceById = async (req, res, next) => {
 // @access  Private
 exports.getInvoiceByOrderId = async (req, res, next) => {
   try {
-    console.log('🔍 Getting invoice for order:', req.params.orderId);
+    console.log('Getting invoice for order:', req.params.orderId);
     
     const invoice = await Invoice.findOne({ order: req.params.orderId })
       .populate('user', 'name email phone')
@@ -189,7 +197,6 @@ exports.getInvoiceByOrderId = async (req, res, next) => {
       });
     }
 
-    // Check authorization
     if (invoice.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -212,93 +219,36 @@ exports.getInvoiceByOrderId = async (req, res, next) => {
 // @access  Private
 exports.downloadInvoice = async (req, res, next) => {
   try {
-    console.log('📥 Download invoice:', req.params.id);
+    console.log('Download invoice:', req.params.id);
     
     const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
-      console.error('❌ Invoice not found');
-      return res.status(404).json({
-        success: false,
-        message: 'Invoice not found',
-      });
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
-    // Check authorization
     if (invoice.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      console.error('❌ Unauthorized');
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized',
-      });
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    // Check if PDF exists
-    if (!invoice.pdfPath) {
-      console.error('❌ No PDF path');
-      return res.status(404).json({
-        success: false,
-        message: 'PDF not generated yet',
-      });
+    if (!invoice.pdfPath || !fs.existsSync(invoice.pdfPath)) {
+      return res.status(404).json({ success: false, message: 'PDF not found' });
     }
 
     const pdfPath = path.resolve(invoice.pdfPath);
-    console.log('📂 PDF path:', pdfPath);
-
-    if (!fs.existsSync(pdfPath)) {
-      console.error('❌ PDF file not found on disk');
-      return res.status(404).json({
-        success: false,
-        message: 'PDF file not found. Please regenerate invoice.',
-      });
-    }
-
-    const stat = fs.statSync(pdfPath);
-    console.log('📊 File size:', stat.size, 'bytes');
-
-    // Get filename
     const filename = `Invoice_${invoice.invoiceNumber}.pdf`;
-    
-    // ✅ Set headers for binary PDF download
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Cache-Control', 'no-cache');
-    
-    console.log('✅ Headers set, streaming file...');
-    
-    // Create read stream and pipe directly to response
+    res.setHeader('Content-Length', fs.statSync(pdfPath).size);
+
     const readStream = fs.createReadStream(pdfPath);
-    
-    readStream.on('open', () => {
-      console.log('✅ File stream opened');
-    });
-    
-    readStream.on('error', (error) => {
-      console.error('❌ Stream error:', error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: 'Error streaming file',
-        });
-      }
-    });
-    
-    readStream.on('end', () => {
-      console.log('✅ File stream completed');
-    });
-    
-    // Pipe the file stream to response
     readStream.pipe(res);
-    
+
   } catch (error) {
-    console.error('❌ Download error:', error);
+    console.error('Download error:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to download invoice',
-        error: error.message,
-      });
+      res.status(500).json({ success: false, message: 'Failed to download invoice' });
     }
   }
 };
@@ -308,51 +258,32 @@ exports.downloadInvoice = async (req, res, next) => {
 // @access  Private
 exports.viewInvoice = async (req, res, next) => {
   try {
-    console.log('👁️ View invoice:', req.params.id);
+    console.log('View invoice:', req.params.id);
     
     const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        message: 'Invoice not found',
-      });
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
-    // Check authorization
     if (invoice.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized',
-      });
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
     if (!invoice.pdfPath || !fs.existsSync(invoice.pdfPath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'PDF not found',
-      });
+      return res.status(404).json({ success: false, message: 'PDF not found' });
     }
 
-    const stat = fs.statSync(invoice.pdfPath);
-    
-    // ✅ Set headers for inline viewing (not download)
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('Content-Length', stat.size);
-    
-    const readStream = fs.createReadStream(invoice.pdfPath);
+
+    const readStream = fs.createReadStream(path.resolve(invoice.pdfPath));
     readStream.pipe(res);
-    
-    console.log('✅ Streaming for view');
-    
+
   } catch (error) {
-    console.error('❌ View error:', error);
+    console.error('View error:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to view invoice',
-      });
+      res.status(500).json({ success: false, message: 'Failed to view invoice' });
     }
   }
 };
@@ -367,10 +298,7 @@ exports.updatePaymentStatus = async (req, res, next) => {
     const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        message: 'Invoice not found',
-      });
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
     invoice.receivedAmount = receivedAmount;
@@ -395,17 +323,11 @@ exports.cancelInvoice = async (req, res, next) => {
     const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        message: 'Invoice not found',
-      });
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
     if (invoice.status === 'paid') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot cancel paid invoice',
-      });
+      return res.status(400).json({ success: false, message: 'Cannot cancel paid invoice' });
     }
 
     invoice.status = 'cancelled';
@@ -422,3 +344,5 @@ exports.cancelInvoice = async (req, res, next) => {
     next(error);
   }
 };
+
+module.exports = exports;

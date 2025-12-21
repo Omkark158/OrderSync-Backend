@@ -1,4 +1,4 @@
-// app.js - FIXED without static invoice serving
+// app.js - FIXED with Counter model import
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -6,6 +6,9 @@ const config = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./middleware/logger');
 
+// ✅ Import models to ensure they're registered with Mongoose
+require('./models/Counter');  
+require('./models/Invoice');  
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -17,7 +20,6 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const smsRoutes = require('./routes/smsRoutes');
 
-
 const app = express();
 
 // CORS
@@ -28,8 +30,6 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// ⚠️ IMPORTANT: Don't use express.json() for routes that serve binary data
-// We'll apply it selectively to routes that need it
 app.use(express.urlencoded({ extended: true }));
 app.use(logger);
 
@@ -38,7 +38,7 @@ app.get('/', (req, res) => {
   res.json({ success: true, message: 'OrderSync API is running', version: '1.0.0' });
 });
 
-// ⚠️ Apply JSON parsing ONLY to non-binary routes
+// Apply JSON parsing ONLY to non-binary routes
 app.use('/api/auth', express.json(), authRoutes);
 app.use('/api/users', express.json(), userRoutes);
 app.use('/api/menu', express.json(), menuRoutes);
@@ -47,11 +47,8 @@ app.use('/api/payments', express.json(), paymentRoutes);
 app.use('/api/bookings', express.json(), bookingRoutes);
 app.use('/api/sms', express.json(), smsRoutes);
 
-// ✅ Invoice routes WITHOUT express.json() to preserve binary data
+// Invoice routes WITHOUT express.json() to preserve binary data
 app.use('/api/invoices', invoiceRoutes);
-
-// ❌ DO NOT serve invoices as static files - they need auth
-// app.use('/invoices', express.static(path.join(__dirname, 'public/invoices')));
 
 // 404 Handler
 app.use((req, res) => {
