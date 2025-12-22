@@ -1,4 +1,4 @@
-// routes/orderRoutes.js - CORRECTED route ordering
+// routes/orderRoutes.js - With DELETE route added
 const express = require('express');
 const router = express.Router();
 const {
@@ -7,9 +7,11 @@ const {
   getOrderById,
   getOrdersByPhone,
   updateOrderStatus,
+  updatePaymentStatus, 
   cancelOrder,
   sendOrderInvoiceSMS,    
-  getOrderInvoice, 
+  getOrderInvoice,
+  deleteOrder,                  
 } = require('../controllers/orderController');
 const { protect, authorize } = require('../middleware/auth');
 const { createOrderValidator } = require('../validators/orderValidator');
@@ -31,6 +33,10 @@ router.get('/:id/invoice', getOrderInvoice);
 router.post('/:id/send-invoice-sms', sendOrderInvoiceSMS);
 router.put('/:id/cancel', cancelOrder);
 router.put('/:id/status', authorize('admin'), updateOrderStatus);
+router.route('/:id/payment-status').put(protect, authorize('admin'), updatePaymentStatus);
+
+// ← NEW: DELETE route (admin only) - must come BEFORE generic GET /:id
+router.delete('/:id', authorize('admin'), deleteOrder);
 
 // Generic :id route MUST be last
 router.get('/:id', getOrderById);

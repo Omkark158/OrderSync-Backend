@@ -396,3 +396,92 @@ exports.getOrderInvoice = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Delete order permanently (Admin only) - Invoice remains intact
+// @route   DELETE /api/orders/:id
+// @access  Private/Admin
+exports.deleteOrder = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    // NO status check here → allows deletion of delivered & cancelled orders
+
+    // Permanently delete ONLY the order
+    await Order.findByIdAndDelete(req.params.id);
+
+    // Invoice is NOT deleted → it stays forever
+
+    res.status(200).json({
+      success: true,
+      message: 'Order deleted successfully. Invoice preserved.',
+    });
+  } catch (error) {
+    console.error('Delete order error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while deleting order',
+    });
+  }
+};
+
+// @desc    Update payment status
+// @route   PUT /api/orders/:id/payment-status
+// @access  Private/Admin
+exports.updatePaymentStatus = async (req, res, next) => {
+  try {
+    console.log('💰 Update payment status:', req.params.id);
+    
+    const { paymentStatus } = req.body;
+
+    // Validate payment status
+    const validStatuses = ['pending', 'partial', 'completed', 'failed', 'refunded'];
+    if (!validStatuses.includes(paymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment status',
+      });
+    }
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      console.log('❌ Order not found:', req.params.id);
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    // Update payment status
+    order.paymentStatus = paymentStatus;
+
+    // If marking as completed, set advance payment to total
+    if (paymentStatus === 'completed') {
+      order.advancePayment = order.totalAmount;
+      order.remainingAmount = 0;
+    }
+
+    await order.save();
+
+    console.log('✅ Payment status updated:', paymentStatus);
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment status updated successfully',
+      data: order,
+    });
+  } catch (error) {
+    console.error('❌ Update payment status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update payment status',
+    });
+  }
+};

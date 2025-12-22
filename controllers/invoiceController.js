@@ -424,3 +424,75 @@ exports.cancelInvoice = async (req, res) => {
     });
   }
 };
+
+
+// ========================================
+// @desc    Delete invoice (only if order is delivered)
+// @route   DELETE /api/invoices/:id
+// @access  Private/Admin
+// ========================================
+exports.deleteInvoice = async (req, res) => {
+  console.log('🗑️ Delete Invoice:', req.params.id);
+  
+  try {
+    const invoice = await Invoice.findById(req.params.id).populate('order');
+    
+    if (!invoice) {
+      console.log('❌ Invoice not found:', req.params.id);
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found',
+      });
+    }
+
+    // Check if order exists and is delivered
+    if (!invoice.order) {
+      console.log('❌ Order not found for invoice:', req.params.id);
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete invoice - associated order not found',
+      });
+    }
+
+    if (invoice.order.orderStatus !== 'delivered') {
+      console.log('❌ Order not delivered:', invoice.order.orderStatus);
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot delete invoice. Order must be delivered first.',
+        currentStatus: invoice.order.orderStatus,
+      });
+    }
+
+    // Delete PDF file if exists
+    if (invoice.pdfPath && fs.existsSync(invoice.pdfPath)) {
+      try {
+        fs.unlinkSync(invoice.pdfPath);
+        console.log('✅ PDF file deleted:', invoice.pdfPath);
+      } catch (fileError) {
+        console.error('⚠️ Failed to delete PDF file:', fileError);
+      }
+    }
+
+    // Update order to remove invoice reference
+    await Order.findByIdAndUpdate(invoice.order._id, {
+      invoiceGenerated: false,
+      invoice: null,
+    });
+
+    // Delete invoice
+    await Invoice.findByIdAndDelete(req.params.id);
+
+    console.log('✅ Invoice deleted:', invoice.invoiceNumber);
+
+    res.status(200).json({
+      success: true,
+      message: 'Invoice deleted successfully',
+    });
+  } catch (error) {
+    console.error('❌ Delete invoice error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete invoice',
+    });
+  }
+};

@@ -1,4 +1,4 @@
-// routes/invoiceRoutes.js - FIXED VERSION
+// routes/invoiceRoutes.js - COMPLETE WITH DELETE
 const express = require('express');
 const router = express.Router();
 const {
@@ -10,6 +10,7 @@ const {
   downloadInvoice,
   viewInvoice,
   cancelInvoice,
+  deleteInvoice, // ← Add this import
 } = require('../controllers/invoiceController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -17,7 +18,7 @@ const { protect, authorize } = require('../middleware/auth');
 router.use((req, res, next) => {
   console.log('🔍 Invoice Route Hit:', req.method, req.originalUrl);
   console.log('📦 Params:', req.params);
-  console.log('👤 User:', req.user ? req.user._id : 'No user');
+  console.log('👤 User:', req.user ? { id: req.user._id, role: req.user.role } : 'No user');
   next();
 });
 
@@ -32,13 +33,13 @@ router.use(protect);
 // 1. Generate invoice for an order (admin only)
 router.post('/generate/:orderId', authorize('admin'), generateInvoice);
 
-// 2. Download PDF (specific action before :id)
+// 2. Download PDF
 router.get('/:id/download', downloadInvoice);
 
-// 3. View invoice (specific action before :id)
+// 3. View invoice PDF inline
 router.get('/:id/view', viewInvoice);
 
-// 4. Get invoice by order ID (different param name)
+// 4. Get invoice by order ID
 router.get('/order/:orderId', getInvoiceByOrderId);
 
 // 5. Update payment status (admin only)
@@ -47,22 +48,13 @@ router.put('/:id/payment', authorize('admin'), updatePaymentStatus);
 // 6. Cancel invoice (admin only)
 router.put('/:id/cancel', authorize('admin'), cancelInvoice);
 
-// 7. Get all invoices
-router.get('/', getAllInvoices);
+// 7. Delete invoice (admin only) 
+router.delete('/:id', authorize('admin'), deleteInvoice);
 
-// 8. Get single invoice by ID (MUST BE LAST)
-router.get('/:id', getInvoiceById);
+// 8. Get all invoices (admin only)
+router.get('/', authorize('admin'), getAllInvoices);
+
+// 9. Get single invoice by ID (admin only)
+router.get('/:id', authorize('admin'), getInvoiceById);
 
 module.exports = router;
-
-// ========================================
-// USAGE EXAMPLES:
-// ========================================
-// POST   /api/invoices/generate/507f1f77bcf86cd799439011  → Generate invoice
-// GET    /api/invoices/507f1f77bcf86cd799439011/download  → Download PDF
-// GET    /api/invoices/507f1f77bcf86cd799439011/view      → View invoice
-// GET    /api/invoices/order/507f1f77bcf86cd799439011     → Get by order ID
-// GET    /api/invoices/507f1f77bcf86cd799439011           → Get invoice details
-// GET    /api/invoices/                                   → Get all invoices
-// PUT    /api/invoices/507f1f77bcf86cd799439011/payment   → Update payment
-// PUT    /api/invoices/507f1f77bcf86cd799439011/cancel    → Cancel invoice
