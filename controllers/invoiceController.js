@@ -1,22 +1,26 @@
-// controllers/invoiceController.js - COMPLETE FINAL VERSION
+// controllers/invoiceController.js - COMPLETE FIXED VERSION
 const Invoice = require('../models/Invoice');
 const Order = require('../models/Order');
-const invoiceService = require('../services/invoiceService');
-const fs = require('fs');
+const { generateInvoicePDF } = require('../services/invoiceService');
 const path = require('path');
+const fs = require('fs');
 
-// @desc    Generate invoice for order
+// ========================================
+// @desc    Generate invoice for an order
 // @route   POST /api/invoices/generate/:orderId
 // @access  Private/Admin
-exports.generateInvoice = async (req, res, next) => {
+// ========================================
+exports.generateInvoice = async (req, res) => {
+  console.log('🔄 Generate Invoice - Order ID:', req.params.orderId);
+  
   try {
-    console.log('Generate invoice for order:', req.params.orderId);
-    
-    const order = await Order.findById(req.params.orderId)
-      .populate('user', 'name email phone')
-      .populate('orderItems.menuItem');
+    const { orderId } = req.params;
+    const { billingAddress, shippingAddress, customerGSTIN, notes } = req.body;
 
+    // Find the order
+    const order = await Order.findById(orderId);
     if (!order) {
+      console.log('❌ Order not found:', orderId);
       return res.status(404).json({
         success: false,
         message: 'Order not found',
@@ -24,89 +28,84 @@ exports.generateInvoice = async (req, res, next) => {
     }
 
     // Check if invoice already exists
-    let invoice = await Invoice.findOne({ order: order._id });
-
-    if (invoice) {
-      console.log('Invoice already exists:', invoice.invoiceNumber);
-
-      // Ensure order is linked to the existing invoice
-      if (!order.invoiceGenerated || order.invoice?.toString() !== invoice._id.toString()) {
-        order.invoiceGenerated = true;
-        order.invoice = invoice._id;
-        await order.save();
-        console.log('Order linked to existing invoice:', invoice._id);
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: 'Invoice already exists',
-        data: { invoice, invoiceGenerated: true },
+    const existingInvoice = await Invoice.findOne({ order: orderId });
+    if (existingInvoice) {
+      console.log('⚠️ Invoice already exists:', existingInvoice.invoiceNumber);
+      return res.status(400).json({
+        success: false,
+        message: 'Invoice already generated for this order',
+        data: existingInvoice,
       });
     }
 
-    // Create new invoice
-    const invoiceData = {
-      order: order._id,
-      user: order.user._id,
+    // Create invoice items from order
+    const items = order.orderItems.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      rate: item.price,
+      amount: item.subtotal,
+    }));
+
+    // Calculate totals
+    const subtotal = order.totalAmount;
+    const totalAmount = order.totalAmount;
+
+    // Determine invoice type
+    let invoiceType = 'bill_of_supply';
+    if (customerGSTIN) {
+      invoiceType = 'tax_invoice';
+    }
+
+    // Create invoice
+    const invoice = await Invoice.create({
+      order: orderId,
+      user: order.user,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       customerEmail: order.customerEmail,
-      billingAddress: order.deliveryAddress,
-      shippingAddress: order.deliveryAddress,
-      deliveryDate: order.orderDateTime,
-      
-      items: order.orderItems.map(item => ({
-        name: item.name,
-        quantity: item.quantity,
-        rate: item.price,
-        amount: item.subtotal,
-      })),
-      
-      subtotal: order.totalAmount,
-      totalAmount: order.totalAmount,
+      customerGSTIN: customerGSTIN || '',
+      billingAddress: billingAddress || order.deliveryAddress,
+      shippingAddress: shippingAddress || order.deliveryAddress,
+      items,
+      subtotal,
+      totalAmount,
       receivedAmount: order.advancePayment || 0,
-      
-      invoiceType: order.totalAmount > 0 ? 'cash_sale' : 'bill_of_supply',
-      
-      taxDetails: order.gstDetails || {
-        isTaxable: false,
-        cgst: { rate: 0, amount: 0 },
-        sgst: { rate: 0, amount: 0 },
-        igst: { rate: 0, amount: 0 },
-        totalTax: 0,
-      },
-    };
+      balance: totalAmount - (order.advancePayment || 0),
+      invoiceType,
+      notes: notes || "Don't waste food",
+      deliveryDate: order.orderDateTime,
+      status: 'sent',
+      sentAt: Date.now(),
+    });
 
-    console.log('Creating new invoice...');
-    invoice = await Invoice.create(invoiceData);
-    console.log('Invoice created:', invoice.invoiceNumber);
+    console.log('✅ Invoice created:', invoice.invoiceNumber);
 
     // Generate PDF
-    console.log('Generating PDF...');
-    const pdfResult = await invoiceService.generateInvoicePDF(invoice);
-    console.log('PDF generated:', pdfResult.fileName);
+    try {
+      const pdfResult = await generateInvoicePDF(invoice);
+      invoice.pdfUrl = pdfResult.url;
+      invoice.pdfPath = pdfResult.path;
+      await invoice.save();
+      console.log('✅ PDF generated:', pdfResult.fileName);
+    } catch (pdfError) {
+      console.error('❌ PDF generation failed:', pdfError);
+      // Continue even if PDF fails
+    }
 
-    // Update invoice with PDF details
-    invoice.pdfUrl = pdfResult.url;
-    invoice.pdfPath = pdfResult.path;
-    invoice.status = 'sent';
-    invoice.sentAt = Date.now();
-    await invoice.save();
-
-    // CRITICAL: Link invoice back to Order
+    // Update order
     order.invoiceGenerated = true;
     order.invoice = invoice._id;
     await order.save();
-    console.log('Order successfully linked to new invoice:', invoice._id);
+
+    console.log('✅ Order updated with invoice');
 
     res.status(201).json({
       success: true,
       message: 'Invoice generated successfully',
-      data: { invoice, invoiceGenerated: true },
+      data: invoice,
     });
-
   } catch (error) {
-    console.error('Generate invoice error:', error);
+    console.error('❌ Generate invoice error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to generate invoice',
@@ -114,24 +113,105 @@ exports.generateInvoice = async (req, res, next) => {
   }
 };
 
+// ========================================
+// @desc    Get invoice by ID
+// @route   GET /api/invoices/:id
+// @access  Private
+// ========================================
+exports.getInvoiceById = async (req, res) => {
+  console.log('🔍 Get Invoice by ID:', req.params.id);
+  
+  try {
+    const invoice = await Invoice.findById(req.params.id)
+      .populate('order')
+      .populate('user', 'name email phone');
+
+    if (!invoice) {
+      console.log('❌ Invoice not found:', req.params.id);
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found',
+      });
+    }
+
+    console.log('✅ Invoice found:', invoice.invoiceNumber);
+
+    res.status(200).json({
+      success: true,
+      data: invoice,
+    });
+  } catch (error) {
+    console.error('❌ Get invoice error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch invoice',
+    });
+  }
+};
+
+// ========================================
+// @desc    Get invoice by order ID
+// @route   GET /api/invoices/order/:orderId
+// @access  Private
+// ========================================
+exports.getInvoiceByOrderId = async (req, res) => {
+  console.log('🔍 Get Invoice by Order ID:', req.params.orderId);
+  
+  try {
+    const invoice = await Invoice.findOne({ order: req.params.orderId })
+      .populate('order')
+      .populate('user', 'name email phone');
+
+    if (!invoice) {
+      console.log('❌ Invoice not found for order:', req.params.orderId);
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found for this order',
+      });
+    }
+
+    console.log('✅ Invoice found:', invoice.invoiceNumber);
+
+    res.status(200).json({
+      success: true,
+      data: invoice,
+    });
+  } catch (error) {
+    console.error('❌ Get invoice by order error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch invoice',
+    });
+  }
+};
+
+// ========================================
 // @desc    Get all invoices
 // @route   GET /api/invoices
 // @access  Private
-exports.getAllInvoices = async (req, res, next) => {
+// ========================================
+exports.getAllInvoices = async (req, res) => {
+  console.log('📋 Get All Invoices');
+  
   try {
-    let query = {};
+    const { status, paymentStatus, startDate, endDate } = req.query;
 
-    if (req.user.role !== 'admin') {
-      query.user = req.user.id;
+    // Build filter
+    const filter = {};
+    if (status) filter.status = status;
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+    if (startDate || endDate) {
+      filter.invoiceDate = {};
+      if (startDate) filter.invoiceDate.$gte = new Date(startDate);
+      if (endDate) filter.invoiceDate.$lte = new Date(endDate);
     }
 
-    if (req.query.status) query.status = req.query.status;
-    if (req.query.paymentStatus) query.paymentStatus = req.query.paymentStatus;
-
-    const invoices = await Invoice.find(query)
+    const invoices = await Invoice.find(filter)
+      .populate('order', 'orderNumber orderStatus')
       .populate('user', 'name email phone')
-      .populate('order')
-      .sort({ createdAt: -1 });
+      .sort({ invoiceDate: -1 });
+
+    console.log(`✅ Found ${invoices.length} invoices`);
 
     res.status(200).json({
       success: true,
@@ -139,210 +219,208 @@ exports.getAllInvoices = async (req, res, next) => {
       data: invoices,
     });
   } catch (error) {
-    console.error('Get invoices error:', error);
-    next(error);
+    console.error('❌ Get all invoices error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch invoices',
+    });
   }
 };
 
-// @desc    Get single invoice
-// @route   GET /api/invoices/:id
+// ========================================
+// @desc    Download invoice PDF
+// @route   GET /api/invoices/:id/download
 // @access  Private
-exports.getInvoiceById = async (req, res, next) => {
+// ========================================
+exports.downloadInvoice = async (req, res) => {
+  console.log('📥 Download Invoice:', req.params.id);
+  
   try {
-    console.log('Getting invoice:', req.params.id);
-    
-    const invoice = await Invoice.findById(req.params.id)
-      .populate('user', 'name email phone')
-      .populate('order');
+    const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
+      console.log('❌ Invoice not found:', req.params.id);
       return res.status(404).json({
         success: false,
         message: 'Invoice not found',
       });
     }
 
-    if (invoice.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to access this invoice',
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: invoice,
-    });
-  } catch (error) {
-    console.error('Get invoice error:', error);
-    next(error);
-  }
-};
-
-// @desc    Get invoice by order ID
-// @route   GET /api/invoices/order/:orderId
-// @access  Private
-exports.getInvoiceByOrderId = async (req, res, next) => {
-  try {
-    console.log('Getting invoice for order:', req.params.orderId);
-    
-    const invoice = await Invoice.findOne({ order: req.params.orderId })
-      .populate('user', 'name email phone')
-      .populate('order');
-
-    if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        message: 'Invoice not found for this order',
-      });
-    }
-
-    if (invoice.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to access this invoice',
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: invoice,
-    });
-  } catch (error) {
-    console.error('Get invoice by order error:', error);
-    next(error);
-  }
-};
-
-// @desc    Download invoice PDF
-// @route   GET /api/invoices/:id/download
-// @access  Private
-exports.downloadInvoice = async (req, res, next) => {
-  try {
-    console.log('Download invoice:', req.params.id);
-    
-    const invoice = await Invoice.findById(req.params.id);
-
-    if (!invoice) {
-      return res.status(404).json({ success: false, message: 'Invoice not found' });
-    }
-
-    if (invoice.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-
     if (!invoice.pdfPath || !fs.existsSync(invoice.pdfPath)) {
-      return res.status(404).json({ success: false, message: 'PDF not found' });
+      console.log('❌ PDF not found:', invoice.pdfPath);
+      
+      // Try to regenerate PDF
+      try {
+        const pdfResult = await generateInvoicePDF(invoice);
+        invoice.pdfUrl = pdfResult.url;
+        invoice.pdfPath = pdfResult.path;
+        await invoice.save();
+        console.log('✅ PDF regenerated');
+      } catch (pdfError) {
+        console.error('❌ PDF regeneration failed:', pdfError);
+        return res.status(500).json({
+          success: false,
+          message: 'PDF file not found and regeneration failed',
+        });
+      }
     }
 
-    const pdfPath = path.resolve(invoice.pdfPath);
-    const filename = `Invoice_${invoice.invoiceNumber}.pdf`;
+    console.log('✅ Sending PDF:', invoice.pdfPath);
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', fs.statSync(pdfPath).size);
-
-    const readStream = fs.createReadStream(pdfPath);
-    readStream.pipe(res);
-
+    res.download(invoice.pdfPath, `Invoice_${invoice.invoiceNumber}.pdf`, (err) => {
+      if (err) {
+        console.error('❌ Download error:', err);
+        res.status(500).json({
+          success: false,
+          message: 'Failed to download invoice',
+        });
+      }
+    });
   } catch (error) {
-    console.error('Download error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ success: false, message: 'Failed to download invoice' });
-    }
+    console.error('❌ Download invoice error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to download invoice',
+    });
   }
 };
 
+// ========================================
 // @desc    View invoice PDF in browser
 // @route   GET /api/invoices/:id/view
 // @access  Private
-exports.viewInvoice = async (req, res, next) => {
+// ========================================
+exports.viewInvoice = async (req, res) => {
+  console.log('👁️ View Invoice:', req.params.id);
+  
   try {
-    console.log('View invoice:', req.params.id);
-    
     const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
-      return res.status(404).json({ success: false, message: 'Invoice not found' });
-    }
-
-    if (invoice.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
+      console.log('❌ Invoice not found:', req.params.id);
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found',
+      });
     }
 
     if (!invoice.pdfPath || !fs.existsSync(invoice.pdfPath)) {
-      return res.status(404).json({ success: false, message: 'PDF not found' });
+      console.log('❌ PDF not found:', invoice.pdfPath);
+      
+      // Try to regenerate PDF
+      try {
+        const pdfResult = await generateInvoicePDF(invoice);
+        invoice.pdfUrl = pdfResult.url;
+        invoice.pdfPath = pdfResult.path;
+        await invoice.save();
+        console.log('✅ PDF regenerated');
+      } catch (pdfError) {
+        console.error('❌ PDF regeneration failed:', pdfError);
+        return res.status(500).json({
+          success: false,
+          message: 'PDF file not found and regeneration failed',
+        });
+      }
     }
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline');
+    console.log('✅ Viewing PDF:', invoice.pdfPath);
 
-    const readStream = fs.createReadStream(path.resolve(invoice.pdfPath));
-    readStream.pipe(res);
-
+    res.contentType('application/pdf');
+    fs.createReadStream(invoice.pdfPath).pipe(res);
   } catch (error) {
-    console.error('View error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ success: false, message: 'Failed to view invoice' });
-    }
+    console.error('❌ View invoice error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to view invoice',
+    });
   }
 };
 
+// ========================================
 // @desc    Update payment status
 // @route   PUT /api/invoices/:id/payment
 // @access  Private/Admin
-exports.updatePaymentStatus = async (req, res, next) => {
+// ========================================
+exports.updatePaymentStatus = async (req, res) => {
+  console.log('💰 Update Payment:', req.params.id);
+  
   try {
-    const { receivedAmount } = req.body;
+    const { receivedAmount, paymentMethod, paymentNote } = req.body;
 
     const invoice = await Invoice.findById(req.params.id);
-
     if (!invoice) {
-      return res.status(404).json({ success: false, message: 'Invoice not found' });
+      console.log('❌ Invoice not found:', req.params.id);
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found',
+      });
     }
 
     invoice.receivedAmount = receivedAmount;
+    invoice.balance = invoice.totalAmount - receivedAmount;
+
+    if (receivedAmount >= invoice.totalAmount) {
+      invoice.paymentStatus = 'paid';
+      invoice.status = 'paid';
+      invoice.paidAt = Date.now();
+    } else if (receivedAmount > 0) {
+      invoice.paymentStatus = 'partial';
+    } else {
+      invoice.paymentStatus = 'unpaid';
+    }
+
     await invoice.save();
+
+    console.log('✅ Payment updated:', invoice.paymentStatus);
 
     res.status(200).json({
       success: true,
-      message: 'Payment status updated',
+      message: 'Payment updated successfully',
       data: invoice,
     });
   } catch (error) {
-    console.error('Update payment error:', error);
-    next(error);
+    console.error('❌ Update payment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update payment',
+    });
   }
 };
 
+// ========================================
 // @desc    Cancel invoice
 // @route   PUT /api/invoices/:id/cancel
 // @access  Private/Admin
-exports.cancelInvoice = async (req, res, next) => {
+// ========================================
+exports.cancelInvoice = async (req, res) => {
+  console.log('🚫 Cancel Invoice:', req.params.id);
+  
   try {
     const invoice = await Invoice.findById(req.params.id);
-
     if (!invoice) {
-      return res.status(404).json({ success: false, message: 'Invoice not found' });
-    }
-
-    if (invoice.status === 'paid') {
-      return res.status(400).json({ success: false, message: 'Cannot cancel paid invoice' });
+      console.log('❌ Invoice not found:', req.params.id);
+      return res.status(404).json({
+        success: false,
+        message: 'Invoice not found',
+      });
     }
 
     invoice.status = 'cancelled';
     invoice.cancelledAt = Date.now();
     await invoice.save();
 
+    console.log('✅ Invoice cancelled:', invoice.invoiceNumber);
+
     res.status(200).json({
       success: true,
-      message: 'Invoice cancelled',
+      message: 'Invoice cancelled successfully',
       data: invoice,
     });
   } catch (error) {
-    console.error('Cancel invoice error:', error);
-    next(error);
+    console.error('❌ Cancel invoice error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cancel invoice',
+    });
   }
 };
-
-module.exports = exports;
