@@ -1,4 +1,6 @@
-// controllers/adminController.js - COMPLETE & FIXED
+// ============================================
+// controllers/adminController.js - WITH COOKIE SUPPORT
+// ============================================
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
@@ -84,19 +86,30 @@ exports.hiddenAdminLogin = async (req, res) => {
     // Generate token
     const token = generateToken(user._id);
 
+    // ✅ Set HTTP-only cookie
+    const cookieOptions = {
+      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    };
+
     console.log('✅ Admin login successful for:', user.email);
     
-    res.status(200).json({
-      success: true,
-      message: "Admin login successful",
-      token,
-      admin: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    });
+    res.status(200)
+      .cookie('adminToken', token, cookieOptions) // ✅ Set cookie
+      .json({
+        success: true,
+        message: "Admin login successful",
+        token, // Also send in response for localStorage fallback
+        admin: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role
+        }
+      });
 
   } catch (error) {
     console.error("❌ Admin login error:", error);

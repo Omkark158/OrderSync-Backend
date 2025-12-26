@@ -1,6 +1,6 @@
 // app.js - COMPLETE FIXED VERSION
 
-require('dotenv').config(); // Load environment variables first
+require('dotenv').config(); 
 
 const express = require('express');
 const cors = require('cors');
@@ -33,7 +33,9 @@ require('./models/Counter');
 require('./models/Invoice');
 require('./models/Order');    
 require('./models/User');
-// ... import other models as needed
+require('./models/Menu');
+require('./models/Booking');
+
 
 // ==================== ROUTES ====================
 

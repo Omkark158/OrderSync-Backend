@@ -156,40 +156,40 @@ exports.getOrders = async (req, res, next) => {
 // @desc    Get single order
 // @route   GET /api/orders/:id
 // @access  Private
-exports.getOrderById = async (req, res, next) => {
-  try {
-    const order = await Order.findById(req.params.id)
-      .populate('orderItems.menuItem')
-      .populate('user', 'name email phone');
+// exports.getOrderById = async (req, res, next) => {
+//   try {
+//     const order = await Order.findById(req.params.id)
+//       .populate('orderItems.menuItem')
+//       .populate('user', 'name email phone');
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found',
-      });
-    }
+//     if (!order) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Order not found',
+//       });
+//     }
 
-    // Make sure user is order owner or admin
-    if (order.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to access this order',
-      });
-    }
+//     // Make sure user is order owner or admin
+//     if (order.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Not authorized to access this order',
+//       });
+//     }
 
-    res.status(200).json({
-      success: true,
-      data: order,
-    });
-  } catch (error) {
-    console.error('Get order by ID error:', error);
-    next(error);
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       data: order,
+//     });
+//   } catch (error) {
+//     console.error('Get order by ID error:', error);
+//     next(error);
+//   }
+// };
 
-// @desc    Get orders by phone number
-// @route   GET /api/orders/phone/:phone
-// @access  Private
+// // @desc    Get orders by phone number
+// // @route   GET /api/orders/phone/:phone
+// // @access  Private
 exports.getOrdersByPhone = async (req, res, next) => {
   try {
     const { phone } = req.params;
@@ -214,6 +214,48 @@ exports.getOrdersByPhone = async (req, res, next) => {
   } catch (error) {
     console.error('Get orders by phone error:', error);
     next(error);
+  }
+};
+
+// @desc    Get single order by orderNumber (e.g., SF2025120021)
+// @route   GET /api/orders/:orderNumber
+// @access  Private
+exports.getOrderByOrderNumber = async (req, res, next) => {
+  try {
+    const { orderNumber } = req.params;
+
+    const order = await Order.findOne({ orderNumber })
+      .populate('orderItems.menuItem')
+      .populate('user', 'name email phone');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    // Authorization: Must be owner or admin
+    const isOwner = order.user && order.user._id.toString() === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this order',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error('Get order by orderNumber error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching order',
+    });
   }
 };
 
@@ -482,6 +524,36 @@ exports.updatePaymentStatus = async (req, res, next) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update payment status',
+    });
+  }
+};
+
+
+// ADD THIS FUNCTION TO YOUR orderController.js
+
+// @desc    Get current user's orders
+// @route   GET /api/orders/my-orders
+// @access  Private
+exports.getMyOrders = async (req, res, next) => {
+  try {
+    console.log('📦 Fetching my orders for user:', req.user.id);
+
+    const orders = await Order.find({ user: req.user.id })
+      .populate('orderItems.menuItem', 'name price image')
+      .sort({ createdAt: -1 });
+
+    console.log(`✅ Found ${orders.length} orders`);
+
+    res.status(200).json({
+      success: true,
+      count: orders.length,
+      data: orders,
+    });
+  } catch (error) {
+    console.error('❌ Get my orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch your orders',
     });
   }
 };

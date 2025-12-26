@@ -1,3 +1,6 @@
+// ============================================
+// controllers/authController.js - FULLY FIXED
+// ============================================
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
@@ -386,7 +389,15 @@ exports.resendLoginOTP = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    // ✅ FIX: req.user is already the full user object from protect middleware
+    const user = req.user;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
 
     res.json({
       success: true,
@@ -394,6 +405,7 @@ exports.getMe = async (req, res) => {
         id: user._id,
         name: user.name,
         phone: user.phone,
+        email: user.email, // ✅ Include email for admin
         role: user.role,
         isPhoneVerified: user.isPhoneVerified,
         isActive: user.isActive,
@@ -414,8 +426,62 @@ exports.getMe = async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 exports.logout = async (req, res) => {
-  res.json({
+  // ✅ Clear cookies on logout
+  const cookieName = req.user.role === 'admin' ? 'adminToken' : 'token';
+  
+  res.clearCookie(cookieName).json({
     success: true,
     message: 'Logged out successfully',
   });
+};
+
+// @desc    Refresh JWT token
+// @route   POST /api/auth/refresh
+// @access  Private (requires valid token)
+exports.refreshToken = async (req, res) => {
+  try {
+    // ✅ Token is already verified by protect middleware
+    const user = req.user;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Generate new token
+    const token = generateToken(user._id);
+
+    // Set new cookie
+    const options = {
+      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    };
+
+    // Determine cookie name based on user role
+    const cookieName = user.role === 'admin' ? 'adminToken' : 'token';
+
+    res.status(200).cookie(cookieName, token, options).json({
+      success: true,
+      message: 'Token refreshed successfully',
+      token, // Also send in response for mobile apps
+      user: {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to refresh token',
+      error: error.message,
+    });
+  }
 };

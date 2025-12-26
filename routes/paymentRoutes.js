@@ -1,24 +1,35 @@
+// routes/paymentRoutes.js - CORRECTED
 const express = require('express');
 const router = express.Router();
 const {
   createPaymentOrder,
   verifyPayment,
-  getPaymentByOrderId,
-  getUserPayments,
   handlePaymentFailure,
+  getPaymentByOrderNumber
 } = require('../controllers/paymentController');
 const { protect } = require('../middleware/auth');
-const { createPaymentValidator, verifyPaymentValidator } = require('../validators/paymentValidator');
-const validateRequest = require('../middleware/validateRequest');
 
 // All routes require authentication
 router.use(protect);
 
-// Payment routes
-router.post('/create-order', createPaymentValidator, validateRequest, createPaymentOrder);
-router.post('/verify', verifyPaymentValidator, validateRequest, verifyPayment);
+// ========================================
+// Payment Order Creation & Verification
+// ========================================
+
+// Create Razorpay payment order
+router.post('/create-order', createPaymentOrder);
+
+// Verify payment after Razorpay success
+router.post('/verify', verifyPayment);
+
+// Handle payment failure
 router.post('/failure', handlePaymentFailure);
-router.get('/order/:orderId', getPaymentByOrderId);
-router.get('/', getUserPayments);
+
+// ========================================
+// Payment Retrieval Routes
+// ========================================
+
+// Get payments by order number
+router.get('/order/:orderNumber', getPaymentByOrderNumber);
 
 module.exports = router;

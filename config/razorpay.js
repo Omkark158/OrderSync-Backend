@@ -1,20 +1,21 @@
+// config/razorpay.js - CORRECTED
 const Razorpay = require('razorpay');
-const config = require('./env');
 
 let razorpayInstance = null;
 
 const getRazorpayInstance = () => {
   if (!razorpayInstance) {
-    if (!config.razorpay.key_id || !config.razorpay.key_secret) {
-      throw new Error('Razorpay credentials are not configured');
+    // Direct environment variable access (more reliable)
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      throw new Error('Razorpay credentials are not configured in environment variables');
     }
 
     razorpayInstance = new Razorpay({
-      key_id: config.razorpay.key_id,
-      key_secret: config.razorpay.key_secret,
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
 
-    console.log('💳 Razorpay instance created');
+    console.log('💳 Razorpay instance created successfully');
   }
 
   return razorpayInstance;

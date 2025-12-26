@@ -1,6 +1,8 @@
-// routes/authRoutes.js - FIXED WITH ADMIN LOGIN
+// routes/authRoutes.js - FIXED IMPORT
 const express = require('express');
 const router = express.Router();
+
+// ✅ Import auth controller functions
 const {
   signup,
   verifySignupOTP,
@@ -9,9 +11,14 @@ const {
   verifyLoginOTP,
   resendLoginOTP,
   getMe,
+  refreshToken, 
   logout,
 } = require('../controllers/authController');
-const { hiddenAdminLogin } = require('../controllers/adminController'); // ✅ ADD THIS
+
+// ✅ Import admin controller - SEPARATE REQUIRE
+const adminController = require('../controllers/adminController');
+
+// Import middleware
 const { protect } = require('../middleware/auth');
 const {
   signupValidator,
@@ -20,8 +27,12 @@ const {
 } = require('../validators/authValidator');
 const { validate } = require('../middleware/validate');
 
-// ✅ ADMIN LOGIN ROUTE - ADD THIS AT THE TOP
-router.post('/admin-login', hiddenAdminLogin);
+// ============================================
+// PUBLIC ROUTES
+// ============================================
+
+// ✅ ADMIN LOGIN - Must be FIRST to avoid conflicts
+router.post('/admin-login', adminController.hiddenAdminLogin);
 
 // Signup routes
 router.post('/signup', signupValidator, validate, signup);
@@ -33,8 +44,17 @@ router.post('/login', loginValidator, validate, login);
 router.post('/verify-login', verifyOTPValidator, validate, verifyLoginOTP);
 router.post('/resend-login', resendLoginOTP);
 
-// Protected routes
+// ============================================
+// PROTECTED ROUTES
+// ============================================
+
+// Token refresh
+router.post('/refresh', protect, refreshToken);
+
+// Get current user
 router.get('/me', protect, getMe);
+
+// Logout
 router.post('/logout', protect, logout);
 
 module.exports = router;
